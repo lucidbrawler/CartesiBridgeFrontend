@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;700&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: #000;
+  color: #fff;
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(circle at top left, #ffcc0022 0%, transparent 50%),
+    radial-gradient(circle at bottom right, #00ffcc22 0%, transparent 50%);
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+/* Warthog yellow glow */
+h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 9rem;
+  font-weight: 900;
+  background: linear-gradient(90deg, #ffcc00, #ffff66, #ffcc00);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 40px #ffcc0088;
+  letter-spacing: 0.05em;
+}
+
+/* CTSI teal accents */
+.btn {
+  padding: 1rem 2.5rem;
+  border: none;
+  border-radius: 50px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 1.2rem;
+}
+
+.primary {
+  background: linear-gradient(135deg, #00ffcc, #00b399);
+  box-shadow: 0 0 20px #00ffcc44;
+}
+.primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px #00ffcc66;
+}
+
+.danger {
+  background: linear-gradient(135deg, #ffcc00, #ff9900);
+  box-shadow: 0 0 20px #ffcc0044;
+}
+.danger:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px #ffcc0066;
+}
+
+.card {
+  background: rgba(20,20,20,0.8);
+  backdrop-filter: blur(15px);
+  border: 1px solid #333;
+  border-radius: 30px;
+  padding: 3rem;
+  margin: 3rem 0;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin: 3rem 0;
+}
+
+.box {      /* more horizontal padding */
+  min-height: 20rem;
+  border-radius: 28px;
+  text-align: center;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.box .big {
+  font-size: 4.8rem;
+  font-weight: 900;
+  margin: 0;
+              /* ← this gives the % room to breathe */
+}
+
+/* Warthog yellow box */
+.yellow {
+  border-color: #ffcc00;
+  background: linear-gradient(135deg, #ffcc0011, #ff990011);
+  box-shadow: 0 0 30px #ffcc0022;
+}
+
+/* CTSI teal box */
+.teal {
+  border-color: #00ffcc;
+  background: linear-gradient(135deg, #00ffcc11, #00b39911);
+  box-shadow: 0 0 30px #00ffcc22;
+}
+
+.big {
+  font-size: 4.5rem;
+  font-weight: 900;
+  font-family: 'Orbitron', sans-serif;
+  margin: 1rem 0;
+  text-shadow: 0 0 20px currentColor;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 3rem 0;
+}
+
+.actions input {
+  padding: 1rem;
+  border-radius: 50px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid #444;
+  color: white;
+  width: 220px;
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+.deposit-box {
+  background: rgba(10,10,10,0.9);
+  padding: 3rem;
+  border-radius: 30px;
+  border: 1px solid #333;
+  margin-top: 4rem;
+}
+
+.address-box {
+  background: #111;
+  padding: 1.5rem;
+  border-radius: 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 1.4rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 1.5rem auto;
+  max-width: 650px;
+  border: 1px solid #444;
+  box-shadow: 0 0 20px #000;
+}
+
+.address {
+  background: #111;
+  padding: 1rem 2rem;
+  border-radius: 20px;
+  display: inline-block;
+  margin-bottom: 2rem;
+  font-family: monospace;
+  border: 1px solid #444;
+}
