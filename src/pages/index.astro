@@ -3,6 +3,7 @@
 import Header from '../components/Header.astro';
 import DepositBox from '../components/DepositBox.astro';
 import WalletIsland from '../components/WalletIsland.jsx';
+import  RatioCalculator from '../components/RatioCalculator.astro';
 ---
 
 <!DOCTYPE html>
@@ -20,7 +21,7 @@ import WalletIsland from '../components/WalletIsland.jsx';
       
       <!-- This is the ONLY interactive part — React island -->
       <WalletIsland client:load />
-      
+      <RatioCalculator client:load/>
       <DepositBox />
     </main>
   </body>

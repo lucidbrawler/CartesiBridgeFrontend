@@ -1,0 +1,212 @@
+---
+// src/components/RatioCalculator.astro — FINAL SPACING PERFECTION
+---
+<section class="ratio-calculator-banner">
+  <div class="calculator-container">
+    <!-- HEADER WITH MORE SPACE BELOW -->
+    <div class="header-zone">
+      <div class="liquid-preview">
+        <p class="preview-label">Your LIQUID</p>
+        <input type="number" id="deposit-input" value="1000" class="deposit-input" min="1" step="1" />
+        <p class="preview-subtitle">deposit amount in USD</p>
+        <p class="liquid-amount" id="simulated-liquid">1,000</p>
+      </div>
+      <div class="price-info">
+        <p>Live Prices: <span id="price-display">Loading…</span></p>
+      </div>
+    </div>
+
+    <!-- SLIDERS — NOW WITH PERFECT BREATHING ROOM -->
+    <div class="sliders-zone">
+      <!-- WART -->
+      <div class="slider-row">
+        <label class="token-label wart">WART</label>
+        <input type="range" id="wart-slider" min="0" max="100" value="33" class="slider wart" />
+        <div class="value-card wart">
+          <span id="wart-value">33%</span>
+          <span id="wart-tokens">0.00 WART</span>
+          <span id="wart-usd" class="small">$0.00</span>
+        </div>
+      </div>
+
+      <!-- CTSI -->
+      <div class="slider-row">
+        <label class="token-label ctsi">CTSI</label>
+        <input type="range" id="ctsi-slider" min="0" max="100" value="33" class="slider ctsi" />
+        <div class="value-card ctsi">
+          <span id="ctsi-value">33%</span>
+          <span id="ctsi-tokens">0.00 CTSI</span>
+          <span id="ctsi-usd" class="small">$0.00</span>
+        </div>
+      </div>
+
+      <!-- USDC -->
+      <div class="slider-row">
+        <label class="token-label usdc">USDC</label>
+        <input type="range" id="usdc-slider" min="0" max="100" value="34" class="slider usdc" />
+        <div class="value-card usdc">
+          <span id="usdc-value">34%</span>
+          <span id="usdc-tokens">0.00 USDC</span>
+          <span id="usdc-usd" class="small">$0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="hint">Slide to adjust ratio — or change deposit amount above</p>
+  </div>
+</section>
+
+<script>
+  const sliders = document.querySelectorAll('.slider');
+  const depositInput = document.getElementById('deposit-input');
+  const liquidAmount = document.getElementById('simulated-liquid');
+
+  const values = {
+    wartPct: document.getElementById('wart-value'),
+    ctsiPct: document.getElementById('ctsi-value'),
+    usdcPct: document.getElementById('usdc-value'),
+    wartTokens: document.getElementById('wart-tokens'),
+    ctsiTokens: document.getElementById('ctsi-tokens'),
+    usdcTokens: document.getElementById('usdc-tokens'),
+    wartUsd: document.getElementById('wart-usd'),
+    ctsiUsd: document.getElementById('ctsi-usd'),
+    usdcUsd: document.getElementById('usdc-usd'),
+    priceDisplay: document.getElementById('price-display')
+  };
+
+  let depositAmount = 1000;
+  let prices = { wart: 0.1631, ctsi: 0.03935, usdc: 1.00 };
+
+  function formatNum(val) {
+    return val >= 1000 ? val.toLocaleString(undefined, {maximumFractionDigits: 0}) : val.toFixed(2);
+  }
+
+  function updateAll() {
+    depositAmount = Math.max(1, Number(depositInput.value) || 1000);
+    liquidAmount.textContent = depositAmount.toLocaleString();
+
+    let wartPct = Number(sliders[0].value);
+    let ctsiPct = Number(sliders[1].value);
+    let usdcPct = Number(sliders[2].value);
+
+    const sum = wartPct + ctsiPct + usdcPct;
+
+    if (sum > 100) {
+      const excess = sum - 100;
+      if (usdcPct >= excess) usdcPct -= excess;
+      else if (ctsiPct >= excess) ctsiPct -= excess;
+      else wartPct -= excess;
+
+      wartPct = Math.max(0, wartPct);
+      ctsiPct = Math.max(0, ctsiPct);
+      usdcPct = Math.max(0, usdcPct);
+
+      sliders[0].value = wartPct;
+      sliders[1].value = ctsiPct;
+      sliders[2].value = usdcPct;
+    }
+
+    values.wartPct.textContent = wartPct + '%';
+    values.ctsiPct.textContent = ctsiPct + '%';
+    values.usdcPct.textContent = usdcPct + '%';
+
+    const wartUsd = depositAmount * (wartPct / 100);
+    const ctsiUsd = depositAmount * (ctsiPct / 100);
+    const usdcUsd = depositAmount * (usdcPct / 100);
+
+    const wartTokens = wartUsd / prices.wart;
+    const ctsiTokens = ctsiUsd / prices.ctsi;
+    const usdcTokens = usdcUsd / prices.usdc;
+
+    values.wartTokens.textContent = formatNum(wartTokens) + ' WART';
+    values.ctsiTokens.textContent = formatNum(ctsiTokens) + ' CTSI';
+    values.usdcTokens.textContent = formatNum(usdcTokens) + ' USDC';
+
+    values.wartUsd.textContent = '$' + wartUsd.toFixed(2);
+    values.ctsiUsd.textContent = '$' + ctsiUsd.toFixed(2);
+    values.usdcUsd.textContent = '$' + usdcUsd.toFixed(2);
+  }
+
+  async function fetchPrices() {
+    try {
+      const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=cartesi,warthog&vs_currencies=usd');
+      const data = await res.json();
+      if (data.warthog?.usd) prices.wart = data.warthog.usd;
+      if (data.cartesi?.usd) prices.ctsi = data.cartesi.usd;
+
+      values.priceDisplay.textContent = 
+        `CTSI $${prices.ctsi.toFixed(5)} | WART $${prices.wart.toFixed(4)} | USDC $1.00`;
+      updateAll();
+    } catch (e) {
+      values.priceDisplay.textContent = "Price fetch failed — using cached";
+    }
+  }
+
+  sliders.forEach(slider => slider.addEventListener('input', updateAll));
+  depositInput.addEventListener('input', updateAll);
+
+  fetchPrices();
+  updateAll();
+  setInterval(fetchPrices, 300000);
+</script>
+
+<style>
+  .ratio-calculator-banner {
+    margin: 8rem 0;                    /* ← more space around whole card */
+    padding: 4rem 0;
+    background: rgba(10,10,10,0.95);
+    border-radius: 50px;
+    border: 1px solid #333;
+  }
+
+  .calculator-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 3rem;
+  }
+
+  .header-zone {
+    margin-bottom: 6rem;               /* ← MAIN FIX: huge breathing room below header */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 3rem;
+  }
+
+  .sliders-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 4rem;                         /* ← space between each slider row */
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 4rem;
+    flex-wrap: wrap;
+  }
+
+  /* Keep all your glow and colors exactly as you love */
+  .slider.wart::-webkit-slider-thumb { background: #ffcc00; box-shadow: 0 0 35px #ffcc00cc; }
+  .slider.ctsi::-webkit-slider-thumb { background: #00ffcc; box-shadow: 0 0 35px #00ffccbb; }
+  .slider.usdc::-webkit-slider-thumb { background: #4a90e2; box-shadow: 0 0 30px #4a90e299; }
+
+  .value-card.wart { border-color: #ffcc00; box-shadow: 0 0 25px rgba(255,204,0,0.3); }
+  .value-card.ctsi { border-color: #00ffcc; box-shadow: 0 0 25px rgba(0,255,204,0.3); }
+  .value-card.usdc { border-color: #4a90e2; box-shadow: 0 0 25px rgba(74,144,226,0.3); background: rgba(74,144,226,0.08); }
+
+  .value-card.wart span:first-child { color: #ffcc00; text-shadow: 0 0 20px #ffcc0088; }
+  .value-card.ctsi span:first-child { color: #00ffcc; text-shadow: 0 0 20px #00ffcc88; }
+  .value-card.usdc span:first-child { color: #4a90e2; text-shadow: 0 0 20px #4a90e288; }
+
+  .token-label.wart { color: #ffcc00; text-shadow: 0 0 15px #ffcc0044; }
+  .token-label.ctsi { color: #00ffcc; text-shadow: 0 0 15px #00ffcc44; }
+  .token-label.usdc { color: #4a90e2; text-shadow: 0 0 15px #4a90e244; }
+
+  .hint {
+    margin-top: 6rem;                  /* ← more space at bottom */
+    font-size: 1.1rem;
+    opacity: 0.8;
+  }
+</style>

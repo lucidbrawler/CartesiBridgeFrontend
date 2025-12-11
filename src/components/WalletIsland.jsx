@@ -2,33 +2,57 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Wallet, Zap, ArrowDown, Coins } from 'lucide-react';
-
+import { Toaster } from 'react-hot-toast';
+import { ethers } from 'ethers';
 // This line fixes CSS loading in the React island
 import '../styles/global.css';
 
-const INPUT_URL = "http://localhost:8080/input";
+const INPUT_URL   = "http://localhost:8080/input";
 const INSPECT_URL = "http://localhost:8080/inspect";
 
 export default function WalletIsland() {
   const [address, setAddress] = useState('');
+  const [connected, setConnected] = useState(false);
   const [vault, setVault] = useState({ liquid: "0", wWART: "0", CTSI: "0" });
   const [burnAmt, setBurnAmt] = useState('');
 
   const connect = async () => {
-    if (!window.ethereum) return alert("Install MetaMask");
-    try {
-      await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const addr = await signer.getAddress();
-      setAddress(addr);
-      fetchVault(addr);
-      const interval = setInterval(() => fetchVault(addr), 10000);
-      return () => clearInterval(interval);
-    } catch (err) {
-      alert("Connection failed");
+  if (!window.ethereum) {
+    alert("Please install MetaMask!");
+    return;
+  }
+
+  try {
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const addr = await signer.getAddress();
+
+    setAddress(addr);
+    setConnected(true);
+
+    alert(`Connected!\n${addr.slice(0,6)}...${addr.slice(-4)}`);
+
+    // This will NEVER break the connection
+    loadVault(addr);
+
+  } catch (err) {
+    console.error("MetaMask rejected:", err);
+    alert("Connection rejected by MetaMask");
+  }
+};
+
+const loadVault = async (addr) => {
+  try {
+    const res = await axios.get(`${INSPECT_URL}/vault/${addr.toLowerCase()}`);
+    if (res.data?.reports?.[0]?.payload) {
+      const json = JSON.parse(fromHex(res.data.reports[0].payload));
+      setVault(json);
     }
-  };
+  } catch (err) {
+    console.log("No vault yet — normal");
+  }
+};
 
   const fetchVault = async (addr) => {
     try {
@@ -59,6 +83,7 @@ export default function WalletIsland() {
   if (!address) {
     return (
       <div className="preview-section">
+      <Toaster position="top-right" />
         <button onClick={connect} className="btn primary text-xl px-12 py-6 mb-12">
           <Wallet className="inline mr-4" size={28} />
           Connect Wallet
