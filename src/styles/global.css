@@ -170,3 +170,27 @@ h1 {
   font-family: monospace;
   border: 1px solid #444;
 }
+/* Register Address Button — Pure CSS, no Tailwind, no inline */
+.register-address-btn {
+  background: linear-gradient(135deg, #7c3aed, #ec4899);
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  padding: 20px 60px;
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(124, 58, 237, 0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  outline: none;
+  font-family: inherit;
+}
+
+.register-address-btn:hover {
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 20px 40px rgba(124, 58, 237, 0.6);
+}
+
+.register-address-btn:active {
+  transform: translateY(0) scale(1);
+}

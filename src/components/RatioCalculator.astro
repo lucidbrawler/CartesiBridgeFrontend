@@ -1,9 +1,8 @@
 ---
-// src/components/RatioCalculator.astro — FINAL SPACING PERFECTION
+// src/components/RatioCalculator.astro — FULL PDAI VERSION
 ---
 <section class="ratio-calculator-banner">
   <div class="calculator-container">
-    <!-- HEADER WITH MORE SPACE BELOW -->
     <div class="header-zone">
       <div class="liquid-preview">
         <p class="preview-label">Your LIQUID</p>
@@ -16,7 +15,6 @@
       </div>
     </div>
 
-    <!-- SLIDERS — NOW WITH PERFECT BREATHING ROOM -->
     <div class="sliders-zone">
       <!-- WART -->
       <div class="slider-row">
@@ -40,14 +38,14 @@
         </div>
       </div>
 
-      <!-- USDC -->
+      <!-- PDAI -->
       <div class="slider-row">
-        <label class="token-label usdc">USDC</label>
-        <input type="range" id="usdc-slider" min="0" max="100" value="34" class="slider usdc" />
-        <div class="value-card usdc">
-          <span id="usdc-value">34%</span>
-          <span id="usdc-tokens">0.00 USDC</span>
-          <span id="usdc-usd" class="small">$0.00</span>
+        <label class="token-label pdai">PDAI</label>
+        <input type="range" id="pdai-slider" min="0" max="100" value="34" class="slider pdai" />
+        <div class="value-card pdai">
+          <span id="pdai-value">34%</span>
+          <span id="pdai-tokens">0.00 PDAI</span>
+          <span id="pdai-usd" class="small">$0.00</span>
         </div>
       </div>
     </div>
@@ -64,18 +62,18 @@
   const values = {
     wartPct: document.getElementById('wart-value'),
     ctsiPct: document.getElementById('ctsi-value'),
-    usdcPct: document.getElementById('usdc-value'),
+    pdaiPct: document.getElementById('pdai-value'),
     wartTokens: document.getElementById('wart-tokens'),
     ctsiTokens: document.getElementById('ctsi-tokens'),
-    usdcTokens: document.getElementById('usdc-tokens'),
+    pdaiTokens: document.getElementById('pdai-tokens'),
     wartUsd: document.getElementById('wart-usd'),
     ctsiUsd: document.getElementById('ctsi-usd'),
-    usdcUsd: document.getElementById('usdc-usd'),
+    pdaiUsd: document.getElementById('pdai-usd'),
     priceDisplay: document.getElementById('price-display')
   };
 
   let depositAmount = 1000;
-  let prices = { wart: 0.1631, ctsi: 0.03935, usdc: 1.00 };
+  let prices = { wart: 0.1631, ctsi: 0.03935, pdai: 1.00 };
 
   function formatNum(val) {
     return val >= 1000 ? val.toLocaleString(undefined, {maximumFractionDigits: 0}) : val.toFixed(2);
@@ -87,44 +85,43 @@
 
     let wartPct = Number(sliders[0].value);
     let ctsiPct = Number(sliders[1].value);
-    let usdcPct = Number(sliders[2].value);
+    let pdaiPct = Number(sliders[2].value);
 
-    const sum = wartPct + ctsiPct + usdcPct;
-
+    const sum = wartPct + ctsiPct + pdaiPct;
     if (sum > 100) {
       const excess = sum - 100;
-      if (usdcPct >= excess) usdcPct -= excess;
+      if (pdaiPct >= excess) pdaiPct -= excess;
       else if (ctsiPct >= excess) ctsiPct -= excess;
       else wartPct -= excess;
 
       wartPct = Math.max(0, wartPct);
       ctsiPct = Math.max(0, ctsiPct);
-      usdcPct = Math.max(0, usdcPct);
+      pdaiPct = Math.max(0, pdaiPct);
 
       sliders[0].value = wartPct;
       sliders[1].value = ctsiPct;
-      sliders[2].value = usdcPct;
+      sliders[2].value = pdaiPct;
     }
 
     values.wartPct.textContent = wartPct + '%';
     values.ctsiPct.textContent = ctsiPct + '%';
-    values.usdcPct.textContent = usdcPct + '%';
+    values.pdaiPct.textContent = pdaiPct + '%';
 
     const wartUsd = depositAmount * (wartPct / 100);
     const ctsiUsd = depositAmount * (ctsiPct / 100);
-    const usdcUsd = depositAmount * (usdcPct / 100);
+    const pdaiUsd = depositAmount * (pdaiPct / 100);
 
     const wartTokens = wartUsd / prices.wart;
     const ctsiTokens = ctsiUsd / prices.ctsi;
-    const usdcTokens = usdcUsd / prices.usdc;
+    const pdaiTokens = pdaiUsd / prices.pdai;
 
     values.wartTokens.textContent = formatNum(wartTokens) + ' WART';
     values.ctsiTokens.textContent = formatNum(ctsiTokens) + ' CTSI';
-    values.usdcTokens.textContent = formatNum(usdcTokens) + ' USDC';
+    values.pdaiTokens.textContent = formatNum(pdaiTokens) + ' PDAI';
 
     values.wartUsd.textContent = '$' + wartUsd.toFixed(2);
     values.ctsiUsd.textContent = '$' + ctsiUsd.toFixed(2);
-    values.usdcUsd.textContent = '$' + usdcUsd.toFixed(2);
+    values.pdaiUsd.textContent = '$' + pdaiUsd.toFixed(2);
   }
 
   async function fetchPrices() {
@@ -135,7 +132,7 @@
       if (data.cartesi?.usd) prices.ctsi = data.cartesi.usd;
 
       values.priceDisplay.textContent = 
-        `CTSI $${prices.ctsi.toFixed(5)} | WART $${prices.wart.toFixed(4)} | USDC $1.00`;
+        `CTSI $${prices.ctsi.toFixed(5)} | WART $${prices.wart.toFixed(4)} | PDAI $1.00`;
       updateAll();
     } catch (e) {
       values.priceDisplay.textContent = "Price fetch failed — using cached";
@@ -152,7 +149,7 @@
 
 <style>
   .ratio-calculator-banner {
-    margin: 8rem 0;                    /* ← more space around whole card */
+    margin: 8rem 0;
     padding: 4rem 0;
     background: rgba(10,10,10,0.95);
     border-radius: 50px;
@@ -166,7 +163,7 @@
   }
 
   .header-zone {
-    margin-bottom: 6rem;               /* ← MAIN FIX: huge breathing room below header */
+    margin-bottom: 6rem;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -177,7 +174,7 @@
   .sliders-zone {
     display: flex;
     flex-direction: column;
-    gap: 4rem;                         /* ← space between each slider row */
+    gap: 4rem;
   }
 
   .slider-row {
@@ -187,25 +184,25 @@
     flex-wrap: wrap;
   }
 
-  /* Keep all your glow and colors exactly as you love */
+  /* Colors */
   .slider.wart::-webkit-slider-thumb { background: #ffcc00; box-shadow: 0 0 35px #ffcc00cc; }
   .slider.ctsi::-webkit-slider-thumb { background: #00ffcc; box-shadow: 0 0 35px #00ffccbb; }
-  .slider.usdc::-webkit-slider-thumb { background: #4a90e2; box-shadow: 0 0 30px #4a90e299; }
+  .slider.pdai::-webkit-slider-thumb { background: #4a90e2; box-shadow: 0 0 30px #4a90e299; }
 
   .value-card.wart { border-color: #ffcc00; box-shadow: 0 0 25px rgba(255,204,0,0.3); }
   .value-card.ctsi { border-color: #00ffcc; box-shadow: 0 0 25px rgba(0,255,204,0.3); }
-  .value-card.usdc { border-color: #4a90e2; box-shadow: 0 0 25px rgba(74,144,226,0.3); background: rgba(74,144,226,0.08); }
+  .value-card.pdai { border-color: #4a90e2; box-shadow: 0 0 25px rgba(74,144,226,0.3); background: rgba(74,144,226,0.08); }
 
   .value-card.wart span:first-child { color: #ffcc00; text-shadow: 0 0 20px #ffcc0088; }
   .value-card.ctsi span:first-child { color: #00ffcc; text-shadow: 0 0 20px #00ffcc88; }
-  .value-card.usdc span:first-child { color: #4a90e2; text-shadow: 0 0 20px #4a90e288; }
+  .value-card.pdai span:first-child { color: #4a90e2; text-shadow: 0 0 20px #4a90e288; }
 
   .token-label.wart { color: #ffcc00; text-shadow: 0 0 15px #ffcc0044; }
   .token-label.ctsi { color: #00ffcc; text-shadow: 0 0 15px #00ffcc44; }
-  .token-label.usdc { color: #4a90e2; text-shadow: 0 0 15px #4a90e244; }
+  .token-label.pdai { color: #4a90e2; text-shadow: 0 0 15px #4a90e244; }
 
   .hint {
-    margin-top: 6rem;                  /* ← more space at bottom */
+    margin-top: 6rem;
     font-size: 1.1rem;
     opacity: 0.8;
   }
