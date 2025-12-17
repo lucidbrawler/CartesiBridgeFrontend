@@ -9,7 +9,7 @@ import '../styles/global.css';
 // CARTESI CLI LOCAL CONFIG
 const INSPECT_URL = "/rollup/inspect";  // Proxy to 8080 for vault reads
 const RPC_URL = "http://localhost:8545";  // Anvil RPC - update to Sepolia if needed
-const INPUT_BOX_ADDRESS = "0x0000000000000000000000000000000000000800";
+const INPUT_BOX_ADDRESS = "0x59b22D57D4f067708AB0c00552767405926dc768";
 const DAPP_ADDRESS = "0xab7528bb862fB57E8A2BCd567a2e929a0Be56a5e";  // Update if needed
 
 // PORTAL AND TOKEN ADDRESSES (match index.js)
@@ -44,6 +44,7 @@ export default function WalletIsland() {
   const [vault, setVault] = useState({ liquid: "0", wWART: "0", CTSI: "0", eth: "0", pdai: "0" });
   const [burnAmt, setBurnAmt] = useState('');
   const [ethDepositAmt, setEthDepositAmt] = useState('');
+  const [withdrawEthAmt, setWithdrawEthAmt] = useState('');
   const [wwartDepositAmt, setWwartDepositAmt] = useState('');
   const [ctsiDepositAmt, setCtsiDepositAmt] = useState('');
   const [pdaiDepositAmt, setPdaiDepositAmt] = useState('');
@@ -171,7 +172,15 @@ export default function WalletIsland() {
       setLoading(false);
     }
   };
-
+// WITHDRAW ETH (trustless initiation via rollup input)
+const withdrawEth = () => {
+  if (!withdrawEthAmt || loading) return;
+  send({ type: "withdraw_eth", amount: withdrawEthAmt })
+    .then(() => {
+      setWithdrawEthAmt('');
+      toast.success('Withdrawal request sent! Voucher will be available for L1 claim after rollup processing.');
+    });
+};
   // DEPOSIT ERC20 (generic)
   const depositErc20 = async (tokenAddress, amountStr, decimals) => {
     if (!amountStr || !signer) return;
@@ -324,7 +333,26 @@ export default function WalletIsland() {
               style={{ padding: '8px', marginRight: '10px', width: '100px' }}
             />
             <button onClick={depositEth} className="btn primary small" disabled={loading}>Deposit</button>
+            {/* Withdrawal Section */}
+<div className="withdraw-section" style={{ marginTop: '40px' }}>
+  <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Withdraw ETH (Trustless Voucher)</h2>
+  <div className="deposit-box" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <p>ETH Amount:</p>
+    <input
+      type="number"
+      placeholder="Amount"
+      value={withdrawEthAmt}
+      onChange={(e) => setWithdrawEthAmt(e.target.value)}
+      style={{ padding: '8px', margin: '0 10px', width: '100px' }}
+    />
+    <button onClick={withdrawEth} className="btn danger small" disabled={loading || !withdrawEthAmt}>Withdraw</button>
+  </div>
+  <p style={{ textAlign: 'center', marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
+    Note: After submission, monitor for the voucher in your wallet or L1 explorer. Execute it trustlessly on L1.
+  </p>
+</div>
           </div>
+          
           <div className="deposit-box">
             <p>wWART</p>
             <input
