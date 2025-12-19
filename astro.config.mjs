@@ -2,15 +2,22 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import viteCommonjs from 'vite-plugin-commonjs';
+import netlify from '@astrojs/netlify';
 
 export default defineConfig({
+  output: 'server',
   integrations: [react()],
+  adapter: netlify({
+    functionPerRoute: false,
+    cacheOnDemandPages: true,
+  }),
   vite: {
     plugins: [
+      viteCommonjs(),
       nodePolyfills({
-        // Buffer is the main one needed for ethers.js
         globals: {
-          Buffer: true,  // Enables Buffer global
+          Buffer: true,
           global: true,
           process: true,
         },
@@ -25,5 +32,10 @@ export default defineConfig({
         },
       },
     },
+    build: {
+      commonjsOptions: {
+        transformMixedEsModules: true
+      }
+    }
   },
 });

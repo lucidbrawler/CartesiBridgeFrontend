@@ -9,19 +9,24 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/netlify": "^6.6.3",
     "@astrojs/react": "^4.4.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "astro": "^5.16.4",
     "axios": "^1.13.2",
+    "crypto-js": "^4.2.0",
     "ethers": "^5.8.0",
     "http-proxy-middleware": "^3.0.5",
     "lucide-react": "^0.556.0",
+    "netlify": "^23.13.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "react-hot-toast": "^2.6.0"
+    "react-hot-toast": "^2.6.0",
+    "update": "^0.7.4"
   },
   "devDependencies": {
+    "vite-plugin-commonjs": "^0.10.4",
     "vite-plugin-node-polyfills": "^0.24.0"
   }
 }
