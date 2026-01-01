@@ -44,6 +44,11 @@ function SubWallet({
   // NEW for regeneration
   const [regenIndex, setRegenIndex] = useState('');
 
+  // NEW for send from sub
+  const [subSendTo, setSubSendTo] = useState(address); // Default to main address for withdrawal
+  const [subSendAmount, setSubSendAmount] = useState('');
+  const [subSendFee, setSubSendFee] = useState('0.01');
+
   // Fetch dynamic salt from Cartesi notice
   const fetchCartesiSalt = async (userMainAddress) => {
     try {
@@ -77,12 +82,15 @@ function SubWallet({
       const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
       const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
       const subAddress = ripemd + checksum;
-      const subMnemonic = mainMnemonic; // Use main mnemonic for derivation; sub doesn't have separate mnemonic
-      const subPrivKey = hdNode.privateKey.slice(2);
-      const newSub = { index: saltedIndex, address: subAddress, mnemonic: subMnemonic, privKey: subPrivKey, locked: true, voucher: null, balance: '0' };
+      // DIFF: Removed 'mnemonic: mainMnemonic' and 'privKey: hdNode.privateKey.slice(2)' from newSub
+      // Derive address as before, but don't store sensitive fields
+      // For testing: Start with locked: false to bypass lock for withdrawal testing
+      const newSub = { index: saltedIndex, address: subAddress, locked: false, voucher: null, balance: '0' };
       setSubWallets([...subWallets, newSub]);
       setSubIndex(index + 1);
       toast.success('Sub-wallet generated!');
+      // Refresh balance after generation
+      await refreshSubBalance(subAddress);
       // Optionally save encrypted
     } catch (err) {
       setSubError('Failed to generate sub-wallet');
@@ -104,10 +112,14 @@ function SubWallet({
       const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
       const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
       const subAddress = ripemd + checksum;
-      const subPrivKey = hdNode.privateKey.slice(2);
-      const regeneratedSub = { index: saltedIndex, address: subAddress, mnemonic: mainMnemonic, privKey: subPrivKey, locked: true, voucher: null, balance: '0' };
+      // DIFF: Removed 'mnemonic: mainMnemonic' and 'privKey: hdNode.privateKey.slice(2)' from regeneratedSub
+      // Derive as before, but don't store sensitive fields
+      // For testing: Start with locked: false to bypass lock for withdrawal testing
+      const regeneratedSub = { index: saltedIndex, address: subAddress, locked: false, voucher: null, balance: '0' };
       setSubWallets(prev => [...prev.filter(sub => sub.index !== saltedIndex), regeneratedSub]);
       toast.success('Sub-wallet regenerated!');
+      // Refresh balance after regeneration
+      await refreshSubBalance(subAddress);
     } catch (err) {
       setSubError('Failed to regenerate sub-wallet');
       toast.error('Failed to regenerate sub-wallet');
@@ -124,10 +136,12 @@ function SubWallet({
       setWartFee('0.01');
       await sendTransaction(); // Use Warthog send
       toast.success('Deposited to sub-wallet! Submit tx proof to Cartesi for lock.');
-      // Update sub balance
+      // Optimistic update
       const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, balance: (parseFloat(sub.balance) + parseFloat(subDepositAmt)).toString() } : sub);
       setSubWallets(updatedSubs);
       setSubDepositAmt('');
+      // Refresh actual balance from node
+      await refreshSubBalance(selectedSub.address);
     } catch (err) {
       setSubError('Deposit failed');
       toast.error('Deposit failed');
@@ -170,8 +184,86 @@ function SubWallet({
 
   // Fetch sub balance
   const refreshSubBalance = async (subAddress) => {
-    await fetchWartBalanceAndNonce(subAddress); // Reuse, but update sub balance
-    // Note: This sets main states; for subs, call separately and update subWallets
+    try {
+      const { balance: balanceInWart } = await fetchBalanceAndNonce(subAddress, true);
+      setSubWallets(prev => prev.map(sub => sub.address === subAddress ? { ...sub, balance: balanceInWart } : sub));
+      toast.success('Sub-wallet balance refreshed!');
+    } catch (err) {
+      setSubError('Failed to refresh sub balance');
+      toast.error('Failed to refresh sub balance');
+    }
+  };
+
+  // NEW: Send from sub (withdraw)
+  const handleSendFromSub = async () => {
+    if (!subSendAmount || !subSendFee || !selectedSub) {
+      setSubError('Enter amount, fee, and select sub');
+      return;
+    }
+    if (!mainMnemonic) {
+      setSubError('Main mnemonic required for derivation');
+      toast.error('Main mnemonic required');
+      return;
+    }
+    setLoading(true);
+    try {
+      const path = `m/44'/2070'/0'/0/${selectedSub.index}'`;
+      const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
+      const subPrivKey = hdNode.privateKey.slice(2);
+      await sendTransaction(subPrivKey, selectedSub.address, subSendTo, subSendAmount, subSendFee);
+      toast.success('Sent from sub-wallet!');
+      // Optimistic update (subtract)
+      const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, balance: (parseFloat(sub.balance) - parseFloat(subSendAmount)).toString() } : sub);
+      setSubWallets(updatedSubs);
+      // Clear inputs
+      setSubSendAmount('');
+      setSubSendFee('0.01');
+      // Refresh balances
+      await refreshSubBalance(selectedSub.address);
+      if (subSendTo === address) {
+        await fetchBalanceAndNonce(address); // Refresh main if withdrawing to main
+      }
+    } catch (err) {
+      setSubError('Send from sub failed');
+      toast.error('Send from sub failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // NEW: Withdraw to main (specific handler, ignores lock for testing)
+  const handleWithdrawToMain = async () => {
+    if (!subSendAmount || !subSendFee || !selectedSub) {
+      setSubError('Enter amount, fee, and select sub');
+      return;
+    }
+    if (!mainMnemonic) {
+      setSubError('Main mnemonic required for derivation');
+      toast.error('Main mnemonic required');
+      return;
+    }
+    setLoading(true);
+    try {
+      const path = `m/44'/2070'/0'/0/${selectedSub.index}'`;
+      const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
+      const subPrivKey = hdNode.privateKey.slice(2);
+      await sendTransaction(subPrivKey, selectedSub.address, address, subSendAmount, subSendFee);
+      toast.success('Withdrawn to main wallet!');
+      // Optimistic update (subtract)
+      const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, balance: (parseFloat(sub.balance) - parseFloat(subSendAmount)).toString() } : sub);
+      setSubWallets(updatedSubs);
+      // Clear inputs
+      setSubSendAmount('');
+      setSubSendFee('0.01');
+      // Refresh balances
+      await refreshSubBalance(selectedSub.address);
+      await fetchBalanceAndNonce(address); // Refresh main
+    } catch (err) {
+      setSubError('Withdraw to main failed');
+      toast.error('Withdraw to main failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Clear all sub-wallets
@@ -192,7 +284,7 @@ function SubWallet({
       <ul>
         {subWallets.map(sub => (
           <li key={sub.index}>
-            Index: {sub.index} | Address: {sub.address} | Balance: {sub.balance} WART | Locked: {sub.locked ? 'Yes' : 'No'}
+            Index: {sub.index} | Address: {sub.address} | Balance: {sub.balance ?? '0'} WART | Locked: {sub.locked ? 'Yes' : 'No'}
             <button onClick={() => refreshSubBalance(sub.address)}>Refresh Balance</button>
             <button onClick={() => setSelectedSub(sub)}>Select for Actions</button>
           </li>
@@ -226,17 +318,32 @@ function SubWallet({
               <button onClick={unlockSubWithVoucher} disabled={loading}>Unlock with Voucher</button>
             </>
           )}
-          {!selectedSub.locked && (
-            <button onClick={() => {
-              setWartToAddr(''); // Set to send from sub, but since sub privkey is available, implement send from sub
-              // TODO: Implement send from sub using sub privkey
-            }} disabled={loading}>Send from Sub</button>
-          )}
+          <input
+            type="text"
+            placeholder="To Address (default: main)"
+            value={subSendTo}
+            onChange={(e) => setSubSendTo(e.target.value)}
+          />
+          <input
+            type="number"
+            placeholder="Amount to Send"
+            value={subSendAmount}
+            onChange={(e) => setSubSendAmount(e.target.value)}
+          />
+          <input
+            type="number"
+            placeholder="Fee (e.g., 0.01)"
+            value={subSendFee}
+            onChange={(e) => setSubSendFee(e.target.value)}
+          />
+          <button onClick={handleSendFromSub} disabled={loading}>Send from Sub</button>
+          <button onClick={handleWithdrawToMain} disabled={loading}>Withdraw to Main (Bypass Lock for Testing)</button>
         </div>
       )}
       {subError && <div className="error">{subError}</div>}
+      <Toaster />
     </section>
   );
 }
 
-export default SubWallet; // Added export default
+export default SubWallet;

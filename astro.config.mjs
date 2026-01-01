@@ -13,16 +13,22 @@ export default defineConfig({
     cacheOnDemandPages: true,
   }),
   vite: {
-    plugins: [
-      viteCommonjs(),
-      nodePolyfills({
-        globals: {
-          Buffer: true,
-          global: true,
-          process: true,
+    resolve: {
+      alias: {
+        crypto: 'crypto-browserify',
+        stream: 'stream-browserify',
+      },
+    },
+    ssr: {
+      noExternal: ['crypto-browserify', 'stream-browserify'],
+    },
+       optimizeDeps: {
+      esbuildOptions: {
+        define: {
+          global: 'globalThis',
         },
-      }),
-    ],
+      },
+    },
     server: {
       proxy: {
         '/rollup': {
@@ -30,6 +36,7 @@ export default defineConfig({
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/rollup/, ''),
         },
+        
       },
     },
     build: {
