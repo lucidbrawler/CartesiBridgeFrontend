@@ -148,7 +148,7 @@ export default function WalletIsland() {
   const send = async (payload) => {
     if (!signer) {
       toast.error("Wallet not connected!");
-      return;
+      throw new Error("Wallet not connected!");
     }
     try {
       setLoading(true);
@@ -159,9 +159,11 @@ export default function WalletIsland() {
       const receipt = await tx.wait();
       toast.success(`Sent! Tx: ${receipt.transactionHash.slice(0,10)}...`);
       setTimeout(() => refreshVault(address), 8000);
+      return receipt;
     } catch (err) {
       toast.error(`Failed: ${err.message || err}`);
       console.error(err);
+      throw err; // Re-throw to propagate to callers
     } finally {
       setLoading(false);
     }

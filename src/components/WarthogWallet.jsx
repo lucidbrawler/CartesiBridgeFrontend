@@ -47,14 +47,26 @@ const WarthogWallet = ({ send /* other props */ }) => {
   const [showDownloadPrompt, setShowDownloadPrompt] = useState(false);
   // Add these states
   const [loading, setLoading] = useState(false);
-  const [subWallets, setSubWallets] = useState(() => {
-    const saved = localStorage.getItem('warthogSubWallets');
-    return saved ? JSON.parse(saved) : [];
-  });
+const [subWallets, setSubWallets] = useState(() => {
+  const saved = localStorage.getItem('warthogSubWallets');
+  if (!saved) return [];
+  try {
+    const bytes = CryptoJS.AES.decrypt(saved, 'your-encryption-key-or-password');
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    return JSON.parse(decrypted);
+  } catch (err) {
+    console.error('Failed to decrypt/parse subWallets:', err);
+    return [];
+  }
+});
   const [subIndex, setSubIndex] = useState(0);
   const [subDepositAmt, setSubDepositAmt] = useState('');
   const [selectedSub, setSelectedSub] = useState(null);
   const [voucherPayload, setVoucherPayload] = useState('');
+
+useEffect(() => {
+  localStorage.removeItem('warthogSubWallets');
+}, []);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {

@@ -1,12 +1,9 @@
 // src/components/SubWallet.jsx
-// README: This component manages the creation, locking, and unlocking of sub-wallets derived from the main Warthog wallet using a Cartesi-dynamic salt for uniqueness and proof-tied functionality. It handles generation, deposits from main, submitting lock proofs to Cartesi, and unlocking via vouchers. States are local to this component, and it receives props from WarthogWallet for integration with sending, balance fetching, and Cartesi 'send'. Use this for self-custodial locked balances verifiable by Cartesi proofs.
-
-import { useState } from 'react'; // For useState
-import { gql, GraphQLClient } from 'graphql-request'; // For GraphQL
+import { useState } from 'react';
+import { gql, GraphQLClient } from 'graphql-request';
 import { ethers } from 'ethers';
-import { Toaster, toast } from 'react-hot-toast'; // If needed for local toasts
+import { Toaster, toast } from 'react-hot-toast';
 
-// NEW: Define GRAPHQL_URL here (moved from parent to avoid reference error)
 const GRAPHQL_URL = 'http://localhost:8080/graphql'; // Update to your Cartesi GraphQL endpoint
 
 function SubWallet({
@@ -15,7 +12,7 @@ function SubWallet({
   selectedNode,
   fetchBalanceAndNonce,
   sendTransaction,
-  send, // Cartesi send
+  send, // Cartesi send for inputs (e.g., lock/unlock)
   address, // L1 address
   loading,
   setLoading,
@@ -23,36 +20,26 @@ function SubWallet({
   setSubWallets,
   subIndex,
   setSubIndex,
-  subDepositAmt,
-  setSubDepositAmt,
-  selectedSub,
-  setSelectedSub,
-  voucherPayload,
-  setVoucherPayload,
-  setWartToAddr,
-  setWartAmount,
-  setWartFee,
   getWartTxProof
 }) {
   const [subError, setSubError] = useState(null);
   const [subSalt, setSubSalt] = useState(null);
+  const [regenIndex, setRegenIndex] = useState('');
   const client = new GraphQLClient(GRAPHQL_URL);
 
-  // NEW for relay in SubWallet (moved from parent for independence)
-  const [wartTxHashForRelay, setWartTxHashForRelay] = useState('');
+  // Per-sub states (using object with sub.index as key)
+  const [subDeposits, setSubDeposits] = useState({});
+  const [subTxHashes, setSubTxHashes] = useState({});
+  const [subVoucherPayloads, setSubVoucherPayloads] = useState({});
+  const [subSendTos, setSubSendTos] = useState({});
+  const [subSendAmounts, setSubSendAmounts] = useState({});
+  const [subSendFees, setSubSendFees] = useState({});
+  const [subLockConditions, setSubLockConditions] = useState({});
+  const [subUnlockConditions, setSubUnlockConditions] = useState({});
 
-  // NEW for regeneration
-  const [regenIndex, setRegenIndex] = useState('');
-
-  // NEW for send from sub
-  const [subSendTo, setSubSendTo] = useState(address); // Default to main address for withdrawal
-  const [subSendAmount, setSubSendAmount] = useState('');
-  const [subSendFee, setSubSendFee] = useState('0.01');
-
-  // Fetch dynamic salt from Cartesi notice
   const fetchCartesiSalt = async (userMainAddress) => {
     try {
-      const query = gql`{ notices(last: 1) { edges { node { payload } } } }`; // Customize to stable notice
+      const query = gql`{ notices(last: 1) { edges { node { payload } } } }`;
       const data = await client.request(query);
       const noticePayload = data.notices.edges[0]?.node.payload || 'fallback_genesis_hash';
       const timestamp = Math.floor(Date.now() / 1000);
@@ -61,20 +48,19 @@ function SubWallet({
       return composite;
     } catch (err) {
       setSubError('Failed to fetch Cartesi salt');
-      return 'fallback_salt'; // Hardcoded fallback
+      return 'fallback_salt';
     }
   };
 
-  // Generate locked sub-wallet with dynamic salt
   const generateLockedSubWallet = async (index) => {
     if (!mainMnemonic) {
       setSubError('Main wallet mnemonic required for derivation');
-      toast.error('Main wallet mnemonic required for derivation'); // Added toast for visibility
+      toast.error('Main wallet mnemonic required for derivation');
       return;
     }
     const salt = await fetchCartesiSalt(mainWallet.address);
     const saltedIndex = index + parseInt(salt.slice(2, 10), 16) % (2**31 - 1);
-    const path = `m/44'/2070'/0'/0/${saltedIndex}'`; // Hardened, custom coin type for Warthog/Cartesi
+    const path = `m/44'/2070'/0'/0/${saltedIndex}'`;
     try {
       const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
       const publicKey = hdNode.publicKey.slice(2);
@@ -82,23 +68,17 @@ function SubWallet({
       const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
       const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
       const subAddress = ripemd + checksum;
-      // DIFF: Removed 'mnemonic: mainMnemonic' and 'privKey: hdNode.privateKey.slice(2)' from newSub
-      // Derive address as before, but don't store sensitive fields
-      // For testing: Start with locked: false to bypass lock for withdrawal testing
       const newSub = { index: saltedIndex, address: subAddress, locked: false, voucher: null, balance: '0' };
       setSubWallets([...subWallets, newSub]);
       setSubIndex(index + 1);
       toast.success('Sub-wallet generated!');
-      // Refresh balance after generation
       await refreshSubBalance(subAddress);
-      // Optionally save encrypted
     } catch (err) {
       setSubError('Failed to generate sub-wallet');
       toast.error('Failed to generate sub-wallet');
     }
   };
 
-  // Regenerate specific sub-wallet
   const regenerateSubWallet = async (saltedIndex) => {
     if (!mainMnemonic) {
       setSubError('Main mnemonic required');
@@ -112,13 +92,9 @@ function SubWallet({
       const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
       const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
       const subAddress = ripemd + checksum;
-      // DIFF: Removed 'mnemonic: mainMnemonic' and 'privKey: hdNode.privateKey.slice(2)' from regeneratedSub
-      // Derive as before, but don't store sensitive fields
-      // For testing: Start with locked: false to bypass lock for withdrawal testing
       const regeneratedSub = { index: saltedIndex, address: subAddress, locked: false, voucher: null, balance: '0' };
       setSubWallets(prev => [...prev.filter(sub => sub.index !== saltedIndex), regeneratedSub]);
       toast.success('Sub-wallet regenerated!');
-      // Refresh balance after regeneration
       await refreshSubBalance(subAddress);
     } catch (err) {
       setSubError('Failed to regenerate sub-wallet');
@@ -126,22 +102,17 @@ function SubWallet({
     }
   };
 
-  // Deposit to sub-address (send from main)
-  const depositToSub = async () => {
-    if (!subDepositAmt || !selectedSub) return setSubError('Select sub-wallet and enter amount');
+  const depositToSub = async (sub) => {
+    const amount = subDeposits[sub.index] || '';
+    if (!amount) return setSubError('Enter deposit amount');
     setLoading(true);
     try {
-      setWartToAddr(selectedSub.address);
-      setWartAmount(subDepositAmt);
-      setWartFee('0.01');
-      await sendTransaction(); // Use Warthog send
+      await sendTransaction(null, mainWallet.address, sub.address, amount, '0.01');
       toast.success('Deposited to sub-wallet! Submit tx proof to Cartesi for lock.');
-      // Optimistic update
-      const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, balance: (parseFloat(sub.balance) + parseFloat(subDepositAmt)).toString() } : sub);
+      const updatedSubs = subWallets.map(s => s.index === sub.index ? { ...s, balance: (parseFloat(s.balance) + parseFloat(amount)).toString() } : s);
       setSubWallets(updatedSubs);
-      setSubDepositAmt('');
-      // Refresh actual balance from node
-      await refreshSubBalance(selectedSub.address);
+      setSubDeposits(prev => ({ ...prev, [sub.index]: '' }));
+      await refreshSubBalance(sub.address);
     } catch (err) {
       setSubError('Deposit failed');
       toast.error('Deposit failed');
@@ -150,15 +121,152 @@ function SubWallet({
     }
   };
 
-  // Submit deposit tx proof to Cartesi for lock
-  const lockSubWithProof = async (txHash) => {
-    if (!txHash || !selectedSub) return setSubError('Enter tx hash and select sub');
+  // NEW: Poll for lock notice confirmation
+  const pollForLockNotice = async (subAddress, timeoutMs = 30000) => {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const query = gql`
+          {
+            notices(last: 5) {
+              edges {
+                node {
+                  payload
+                }
+              }
+            }
+          }
+        `;
+        const data = await client.request(query);
+        const notices = data.notices.edges.map(edge => {
+          try {
+            return JSON.parse(ethers.utils.toUtf8String(edge.node.payload));
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+
+        const lockNotice = notices.find(notice => 
+          notice.type === 'subwallet_locked' && 
+          notice.subAddress === subAddress && 
+          notice.verified === true
+        );
+
+        if (lockNotice) {
+          return true; // Locked
+        }
+      } catch (err) {
+        console.error('Notice poll error:', err);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Poll every 2s
+    }
+    return false; // Timeout
+  };
+
+  // NEW: Poll for unlock notice confirmation
+  const pollForUnlockNotice = async (subAddress, timeoutMs = 30000) => {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const query = gql`
+          {
+            notices(last: 5) {  # Fetch last 5 to catch recent ones
+              edges {
+                node {
+                  payload
+                }
+              }
+            }
+          }
+        `;
+        const data = await client.request(query);
+        const notices = data.notices.edges.map(edge => {
+          try {
+            return JSON.parse(ethers.utils.toUtf8String(edge.node.payload));  // Decode hex payload if needed
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+
+        const unlockNotice = notices.find(notice => 
+          notice.type === 'subwallet_unlocked' && 
+          notice.subAddress === subAddress && 
+          notice.verified === true
+        );
+
+        if (unlockNotice) {
+          return true;  // Unlocked
+        }
+      } catch (err) {
+        console.error('Notice poll error:', err);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));  // Poll every 2s
+    }
+    return false;  // Timeout, not unlocked
+  };
+
+  // NEW: Get current lock state from latest notices (for sync on refresh)
+  const isSubLocked = async (subAddress) => {
+    try {
+      const query = gql`
+        {
+          notices(last: 20) {  # Fetch more to ensure we catch history
+            edges {
+              node {
+                payload
+              }
+            }
+          }
+        }
+      `;
+      const data = await client.request(query);
+      const notices = data.notices.edges.map(edge => {
+        try {
+          return JSON.parse(ethers.utils.toUtf8String(edge.node.payload));
+        } catch {
+          return null;
+        }
+      }).filter(Boolean);
+
+      const relevantNotices = notices.filter(notice => 
+        notice.subAddress === subAddress && 
+        notice.verified === true && 
+        (notice.type === 'subwallet_locked' || notice.type === 'subwallet_unlocked')
+      );
+
+      if (relevantNotices.length === 0) {
+        return false; // Default not locked if no history
+      }
+
+      // Assume edges are ordered newest first (last:20 means recent at index 0)
+      const latestNotice = relevantNotices[0];
+      return latestNotice.type === 'subwallet_locked';
+    } catch (err) {
+      console.error('Lock state query error:', err);
+      return false; // Default on error
+    }
+  };
+
+  const lockSubWithProof = async (sub) => {
+    const txHash = subTxHashes[sub.index] || '';
+    const condition = subLockConditions[sub.index] || 'true';
+    if (!txHash) return setSubError('Enter tx hash for lock proof');
     setLoading(true);
     try {
-      const proof = await getWartTxProof(txHash); // Use existing getWartTxProof
-      const payload = { type: 'sub_lock', subAddress: selectedSub.address, proof, recipient: address };
-      await send(payload); // Cartesi input
-      toast.success('Lock proof submitted! Sub-wallet locked until voucher unlock.');
+      const proof = await getWartTxProof(txHash);
+      const payload = { type: 'sub_lock', subAddress: sub.address, proof, recipient: address, condition }; // Added condition for merged handler
+      await send(payload); // Use Cartesi send for input
+      toast.success('Lock proof submitted! Polling for confirmation...');
+
+      const isLocked = await pollForLockNotice(sub.address);
+      if (isLocked) {
+        setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, locked: true } : s));
+        toast.success('Lock confirmed via notice! Sub-wallet locked.');
+      } else {
+        toast.error('Lock not confirmed within timeout. Check backend logs.');
+      }
+      setSubTxHashes(prev => ({ ...prev, [sub.index]: '' }));
+      setSubLockConditions(prev => ({ ...prev, [sub.index]: '' }));
     } catch (err) {
       setSubError('Lock failed');
       toast.error('Lock failed');
@@ -167,61 +275,127 @@ function SubWallet({
     }
   };
 
-  // Unlock sub with voucher (manual input for now)
-  const unlockSubWithVoucher = () => {
-    if (!voucherPayload || !selectedSub) return setSubError('Enter voucher payload and select sub');
+  const requestUnlock = async (sub) => {
+    setLoading(true);
     try {
-      // Simulate verification (in real, query Cartesi for voucher)
-      const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, locked: false, voucher: voucherPayload } : sub);
-      setSubWallets(updatedSubs);
-      toast.success('Sub-wallet unlocked! You can now send from it.');
-      setVoucherPayload('');
+      await send({ type: 'sub_unlock', subAddress: sub.address });
+      toast.success('Unlock requested! Polling for confirmation...');
+
+      const isUnlocked = await pollForUnlockNotice(sub.address);
+      if (isUnlocked) {
+        setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, locked: false } : s));
+        toast.success('Unlock confirmed via notice! Sub-wallet unlocked.');
+      } else {
+        toast.error('Unlock not confirmed within timeout. Check backend logs.');
+      }
     } catch (err) {
-      setSubError('Unlock failed');
-      toast.error('Unlock failed');
+      setSubError('Unlock request failed');
+      toast.error('Unlock request failed');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Fetch sub balance
+  const handleLock = async (sub) => {
+    const condition = subLockConditions[sub.index] || 'true';
+    setLoading(true);
+    try {
+      await send({ type: 'sub_lock', subAddress: sub.address, condition }); // Unified to 'sub_lock'
+      toast.success('Sub-wallet lock submitted to Cartesi! Polling for confirmation...');
+
+      const isLocked = await pollForLockNotice(sub.address);
+      if (isLocked) {
+        setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, locked: true } : s));
+        toast.success('Lock confirmed via notice!');
+      } else {
+        toast.error('Lock not confirmed within timeout. Check backend logs.');
+      }
+    } catch (err) {
+      setSubError('Lock submission failed: ' + err.message);
+      toast.error('Lock submission failed: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnlock = async (sub) => {
+    const condition = subUnlockConditions[sub.index] || 'true';
+    setLoading(true);
+    try {
+      await send({ type: 'sub_unlock', subAddress: sub.address, condition }); // Unified to 'sub_unlock'
+      toast.success('Sub-wallet unlock submitted to Cartesi! Polling for confirmation...');
+
+      const isUnlocked = await pollForUnlockNotice(sub.address);
+      if (isUnlocked) {
+        setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, locked: false } : s));
+        toast.success('Unlock confirmed via notice!');
+      } else {
+        toast.error('Unlock not confirmed within timeout. Check backend logs.');
+      }
+    } catch (err) {
+      setSubError('Unlock submission failed: ' + err.message);
+      toast.error('Unlock submission failed: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const unlockSubWithVoucher = (sub) => {
+    const voucherPayload = subVoucherPayloads[sub.index] || '';
+    if (!voucherPayload) return setSubError('Enter voucher payload');
+    try {
+      if (!voucherPayload.toLowerCase().includes(sub.address.slice(2).toLowerCase())) {
+        throw new Error('Voucher payload does not match sub-wallet');
+      }
+      const updatedSubs = subWallets.map(s => s.index === sub.index ? { ...s, locked: false, voucher: voucherPayload } : s);
+      setSubWallets(updatedSubs);
+      toast.success('Sub-wallet unlocked!');
+      setSubVoucherPayloads(prev => ({ ...prev, [sub.index]: '' }));
+    } catch (err) {
+      setSubError('Unlock failed: ' + err.message);
+      toast.error('Unlock failed: ' + err.message);
+    }
+  };
+
   const refreshSubBalance = async (subAddress) => {
     try {
       const { balance: balanceInWart } = await fetchBalanceAndNonce(subAddress, true);
-      setSubWallets(prev => prev.map(sub => sub.address === subAddress ? { ...sub, balance: balanceInWart } : sub));
-      toast.success('Sub-wallet balance refreshed!');
+      const locked = await isSubLocked(subAddress); // NEW: Sync lock state from notices
+      setSubWallets(prev => prev.map(sub => sub.address === subAddress ? { ...sub, balance: balanceInWart, locked } : sub));
+      toast.success('Sub-wallet balance and lock state refreshed!');
     } catch (err) {
       setSubError('Failed to refresh sub balance');
       toast.error('Failed to refresh sub balance');
     }
   };
 
-  // NEW: Send from sub (withdraw)
-  const handleSendFromSub = async () => {
-    if (!subSendAmount || !subSendFee || !selectedSub) {
-      setSubError('Enter amount, fee, and select sub');
+  const handleSendFromSub = async (sub) => {
+    const amount = subSendAmounts[sub.index] || '';
+    const fee = subSendFees[sub.index] || '0.01';
+    const to = subSendTos[sub.index] || address;
+    if (!amount || !fee) {
+      setSubError('Enter amount and fee');
       return;
     }
     if (!mainMnemonic) {
-      setSubError('Main mnemonic required for derivation');
+      setSubError('Main mnemonic required');
       toast.error('Main mnemonic required');
       return;
     }
     setLoading(true);
     try {
-      const path = `m/44'/2070'/0'/0/${selectedSub.index}'`;
+      const path = `m/44'/2070'/0'/0/${sub.index}'`;
       const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
       const subPrivKey = hdNode.privateKey.slice(2);
-      await sendTransaction(subPrivKey, selectedSub.address, subSendTo, subSendAmount, subSendFee);
+      await sendTransaction(subPrivKey, sub.address, to, amount, fee);
       toast.success('Sent from sub-wallet!');
-      // Optimistic update (subtract)
-      const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, balance: (parseFloat(sub.balance) - parseFloat(subSendAmount)).toString() } : sub);
+      const updatedSubs = subWallets.map(s => s.index === sub.index ? { ...s, balance: (parseFloat(s.balance) - parseFloat(amount)).toString() } : s);
       setSubWallets(updatedSubs);
-      // Clear inputs
-      setSubSendAmount('');
-      setSubSendFee('0.01');
-      // Refresh balances
-      await refreshSubBalance(selectedSub.address);
-      if (subSendTo === address) {
-        await fetchBalanceAndNonce(address); // Refresh main if withdrawing to main
+      setSubSendAmounts(prev => ({ ...prev, [sub.index]: '' }));
+      setSubSendFees(prev => ({ ...prev, [sub.index]: '0.01' }));
+      // Removed: await refreshSubBalance(sub.address); // Avoid refreshing lock state after send to prevent incorrect locking
+      if (to === address) {
+        await fetchBalanceAndNonce(address);
       }
     } catch (err) {
       setSubError('Send from sub failed');
@@ -231,42 +405,6 @@ function SubWallet({
     }
   };
 
-  // NEW: Withdraw to main (specific handler, ignores lock for testing)
-  const handleWithdrawToMain = async () => {
-    if (!subSendAmount || !subSendFee || !selectedSub) {
-      setSubError('Enter amount, fee, and select sub');
-      return;
-    }
-    if (!mainMnemonic) {
-      setSubError('Main mnemonic required for derivation');
-      toast.error('Main mnemonic required');
-      return;
-    }
-    setLoading(true);
-    try {
-      const path = `m/44'/2070'/0'/0/${selectedSub.index}'`;
-      const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
-      const subPrivKey = hdNode.privateKey.slice(2);
-      await sendTransaction(subPrivKey, selectedSub.address, address, subSendAmount, subSendFee);
-      toast.success('Withdrawn to main wallet!');
-      // Optimistic update (subtract)
-      const updatedSubs = subWallets.map(sub => sub.index === selectedSub.index ? { ...sub, balance: (parseFloat(sub.balance) - parseFloat(subSendAmount)).toString() } : sub);
-      setSubWallets(updatedSubs);
-      // Clear inputs
-      setSubSendAmount('');
-      setSubSendFee('0.01');
-      // Refresh balances
-      await refreshSubBalance(selectedSub.address);
-      await fetchBalanceAndNonce(address); // Refresh main
-    } catch (err) {
-      setSubError('Withdraw to main failed');
-      toast.error('Withdraw to main failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Clear all sub-wallets
   const clearSubWallets = () => {
     setSubWallets([]);
     setSubIndex(0);
@@ -286,60 +424,79 @@ function SubWallet({
           <li key={sub.index}>
             Index: {sub.index} | Address: {sub.address} | Balance: {sub.balance ?? '0'} WART | Locked: {sub.locked ? 'Yes' : 'No'}
             <button onClick={() => refreshSubBalance(sub.address)}>Refresh Balance</button>
-            <button onClick={() => setSelectedSub(sub)}>Select for Actions</button>
+            <div>
+              <h4>Actions for this Sub-Wallet</h4>
+              <input
+                type="number"
+                placeholder="Deposit Amount"
+                value={subDeposits[sub.index] || ''}
+                onChange={(e) => setSubDeposits(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                disabled={sub.locked || loading}
+              />
+              <button onClick={() => depositToSub(sub)} disabled={sub.locked || loading}>Deposit from Main</button>
+              <input
+                type="text"
+                placeholder="Deposit Tx Hash for Lock"
+                value={subTxHashes[sub.index] || ''}
+                onChange={(e) => setSubTxHashes(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                disabled={sub.locked || loading}
+              />
+              <button onClick={() => lockSubWithProof(sub)} disabled={sub.locked || loading}>Lock with Proof</button>
+              <input
+                type="text"
+                placeholder="Lock Condition (true/false)"
+                value={subLockConditions[sub.index] || 'true'}
+                onChange={(e) => setSubLockConditions(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                disabled={sub.locked || loading}
+              />
+              <button onClick={() => handleLock(sub)} disabled={sub.locked || loading}>Test Lock</button>
+              {sub.locked && (
+                <>
+                  <button onClick={() => requestUnlock(sub)} disabled={loading}>Request Unlock</button>
+                  <input
+                    type="text"
+                    placeholder="Unlock Condition (true/false)"
+                    value={subUnlockConditions[sub.index] || 'true'}
+                    onChange={(e) => setSubUnlockConditions(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                    disabled={loading}
+                  />
+                  <button onClick={() => handleUnlock(sub)} disabled={loading}>Test Unlock</button>
+                  <input
+                    type="text"
+                    placeholder="Voucher Payload to Unlock"
+                    value={subVoucherPayloads[sub.index] || ''}
+                    onChange={(e) => setSubVoucherPayloads(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                    disabled={loading}
+                  />
+                  <button onClick={() => unlockSubWithVoucher(sub)} disabled={loading}>Unlock with Voucher</button>
+                </>
+              )}
+              <input
+                type="text"
+                placeholder="To Address (default: main)"
+                value={subSendTos[sub.index] || address}
+                onChange={(e) => setSubSendTos(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                disabled={sub.locked || loading}
+              />
+              <input
+                type="number"
+                placeholder="Amount to Send"
+                value={subSendAmounts[sub.index] || ''}
+                onChange={(e) => setSubSendAmounts(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                disabled={sub.locked || loading}
+              />
+              <input
+                type="number"
+                placeholder="Fee (e.g., 0.01)"
+                value={subSendFees[sub.index] || '0.01'}
+                onChange={(e) => setSubSendFees(prev => ({ ...prev, [sub.index]: e.target.value }))}
+                disabled={sub.locked || loading}
+              />
+              <button onClick={() => handleSendFromSub(sub)} disabled={sub.locked || loading}>Send from Sub</button>
+            </div>
           </li>
         ))}
       </ul>
-      {selectedSub && (
-        <div>
-          <h4>Actions for Selected Sub ({selectedSub.address})</h4>
-          <input
-            type="number"
-            placeholder="Deposit Amount to Sub"
-            value={subDepositAmt}
-            onChange={(e) => setSubDepositAmt(e.target.value)}
-          />
-          <button onClick={depositToSub} disabled={loading}>Deposit from Main</button>
-          <input
-            type="text"
-            placeholder="Deposit Tx Hash for Lock Proof"
-            value={wartTxHashForRelay}
-            onChange={(e) => setWartTxHashForRelay(e.target.value)}
-          />
-          <button onClick={() => lockSubWithProof(wartTxHashForRelay)} disabled={loading}>Submit Lock Proof</button>
-          {selectedSub.locked && (
-            <>
-              <input
-                type="text"
-                placeholder="Voucher Payload to Unlock"
-                value={voucherPayload}
-                onChange={(e) => setVoucherPayload(e.target.value)}
-              />
-              <button onClick={unlockSubWithVoucher} disabled={loading}>Unlock with Voucher</button>
-            </>
-          )}
-          <input
-            type="text"
-            placeholder="To Address (default: main)"
-            value={subSendTo}
-            onChange={(e) => setSubSendTo(e.target.value)}
-          />
-          <input
-            type="number"
-            placeholder="Amount to Send"
-            value={subSendAmount}
-            onChange={(e) => setSubSendAmount(e.target.value)}
-          />
-          <input
-            type="number"
-            placeholder="Fee (e.g., 0.01)"
-            value={subSendFee}
-            onChange={(e) => setSubSendFee(e.target.value)}
-          />
-          <button onClick={handleSendFromSub} disabled={loading}>Send from Sub</button>
-          <button onClick={handleWithdrawToMain} disabled={loading}>Withdraw to Main (Bypass Lock for Testing)</button>
-        </div>
-      )}
       {subError && <div className="error">{subError}</div>}
       <Toaster />
     </section>
