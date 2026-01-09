@@ -469,118 +469,130 @@ useEffect(() => {
     }
   };
 
-  const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddress = wallet?.address, to = toAddr, amountVal = amount, feeVal = fee) => {
-    setError(null);
-    setSendResult(null);
-    if (!to || !amountVal || !feeVal) {
-      setError('Please fill in all transaction fields');
-      return;
-    }
-    const amountE8 = wartToE8(amountVal);
-    let feeE8;
-    try {
-      feeE8 = await getRoundedFeeE8(feeVal);
-    } catch {
-      setError('Invalid fee or failed to round');
-      return;
-    }
-    if (!amountE8 || !feeE8) {
-      setError('Invalid amount or fee: must be positive numbers');
-      return;
-    }
-    if (!fromPrivKey) {
-      setError('No private key available.');
-      return;
-    }
-    const isForSub = fromAddress !== wallet?.address;
-    const { nonceId: txNonceId, pinHeight: txPinHeight, pinHash: txPinHash } = await fetchBalanceAndNonce(fromAddress, isForSub);
-    if (txNonceId === null || txPinHeight === null || txPinHash === null) {
-      setError('Nonce or chain head not available. Please refresh balance and try again.');
-      return;
-    }
-    try {
-      const pinHashBytes = ethersV6.getBytes('0x' + txPinHash);
-      const heightBytes = new Uint8Array(4);
-      new DataView(heightBytes.buffer).setUint32(0, txPinHeight, false);
-      const nonceBytes = new Uint8Array(4);
-      new DataView(nonceBytes.buffer).setUint32(0, txNonceId, false);
-      const reserved = new Uint8Array(3);
-      const feeBytes = new Uint8Array(8);
-      new DataView(feeBytes.buffer).setBigUint64(0, BigInt(feeE8), false);
-      const toRawBytes = ethersV6.getBytes('0x' + to.slice(0, 40));
-      const amountBytes = new Uint8Array(8);
-      new DataView(amountBytes.buffer).setBigUint64(0, BigInt(amountE8), false);
+const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddress = wallet?.address, to = toAddr, amountVal = amount, feeVal = fee) => {
+  setError(null);
+  setSendResult(null);
+  if (!to || !amountVal || !feeVal) {
+    setError('Please fill in all transaction fields');
+    return;
+  }
+  const amountE8 = wartToE8(amountVal);
+  let feeE8;
+  try {
+    feeE8 = await getRoundedFeeE8(feeVal);
+  } catch {
+    setError('Invalid fee or failed to round');
+    return;
+  }
+  if (!amountE8 || !feeE8) {
+    setError('Invalid amount or fee: must be positive numbers');
+    return;
+  }
+  if (!fromPrivKey) {
+    setError('No private key available.');
+    return;
+  }
+  const isForSub = fromAddress !== wallet?.address;
+  const { nonceId: txNonceId, pinHeight: txPinHeight, pinHash: txPinHash } = await fetchBalanceAndNonce(fromAddress, isForSub);
+  if (txNonceId === null || txPinHeight === null || txPinHash === null) {
+    setError('Nonce or chain head not available. Please refresh balance and try again.');
+    return;
+  }
+  try {
+    const pinHashBytes = ethersV6.getBytes('0x' + txPinHash);
+    const heightBytes = new Uint8Array(4);
+    new DataView(heightBytes.buffer).setUint32(0, txPinHeight, false);
+    const nonceBytes = new Uint8Array(4);
+    new DataView(nonceBytes.buffer).setUint32(0, txNonceId, false);
+    const reserved = new Uint8Array(3);
+    const feeBytes = new Uint8Array(8);
+    new DataView(feeBytes.buffer).setBigUint64(0, BigInt(feeE8), false);
+    const toRawBytes = ethersV6.getBytes('0x' + to.slice(0, 40));
+    const amountBytes = new Uint8Array(8);
+    new DataView(amountBytes.buffer).setBigUint64(0, BigInt(amountE8), false);
 
-      const messageBytes = ethersV6.concat([
-        pinHashBytes,
-        heightBytes,
-        nonceBytes,
-        reserved,
-        feeBytes,
-        toRawBytes,
-        amountBytes,
-      ]);
+    const messageBytes = ethersV6.concat([
+      pinHashBytes,
+      heightBytes,
+      nonceBytes,
+      reserved,
+      feeBytes,
+      toRawBytes,
+      amountBytes,
+    ]);
 
-      const txHash = ethersV6.sha256(messageBytes);
-      const txHashBytes = ethersV6.getBytes(txHash);
+    const txHash = ethersV6.sha256(messageBytes);
+    const txHashBytes = ethersV6.getBytes(txHash);
 
-      const signer = new ethersV6.Wallet('0x' + fromPrivKey);
-      const sig = signer.signingKey.sign(txHashBytes);
+    const signer = new ethersV6.Wallet('0x' + fromPrivKey);
+    const sig = signer.signingKey.sign(txHashBytes);
 
-      const rHex = sig.r.slice(2);
-      const sHex = sig.s.slice(2);
-      const recid = sig.v - 27;
-      const recidHex = recid.toString(16).padStart(2, '0');
-      const signature65 = rHex + sHex + recidHex;
+    const rHex = sig.r.slice(2);
+    const sHex = sig.s.slice(2);
+    const recid = sig.v - 27;
+    const recidHex = recid.toString(16).padStart(2, '0');
+    const signature65 = rHex + sHex + recidHex;
 
-      const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
-      console.log('Sending transaction request to:', `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`);
-      const response = await axios.post(
-        `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`,
-        {
-          pinHeight: txPinHeight,
-          nonceId: txNonceId,
-          toAddr: to,
-          amountE8,
-          feeE8,
-          signature65,
-        },
-        { headers: { 'Content-Type': 'application/json' } }
-      );
-      console.log('Send transaction response status:', response.status);
-      const data = response.data;
-      console.log('Send transaction response data:', data);
-      setSendResult(data);
-      // Clear input fields on success if sending from main
-      if (!isForSub) {
-        setToAddr('');
-        setAmount('');
-        setFee('');
-      }
-      // Refresh balance
-      await fetchBalanceAndNonce(fromAddress, isForSub);
-      if (!isForSub) {
-        fetchBalanceAndNonce(wallet.address);
-      }
-      return data; // Return response for sub-deposit use
-    } catch (err) {
-      const errorMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to send transaction';
-      setError(errorMessage);
-      console.error('Fetch send transaction error:', err);
+    const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+    console.log('Sending transaction request to:', `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`);
+    const response = await axios.post(
+      `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`,
+      {
+        pinHeight: txPinHeight,
+        nonceId: txNonceId,
+        toAddr: to,
+        amountE8,
+        feeE8,
+        signature65,
+      },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    console.log('Send transaction response status:', response.status);
+    const data = response.data;
+    console.log('Send transaction response data:', data);
+    setSendResult(data);
+    // Clear input fields on success if sending from main
+    if (!isForSub) {
+      setToAddr('');
+      setAmount('');
+      setFee('');
     }
-  };
-
+    // Refresh balance
+    await fetchBalanceAndNonce(fromAddress, isForSub);
+    if (!isForSub) {
+      fetchBalanceAndNonce(wallet.address);
+    }
+    return data; // Return response for sub-deposit use (e.g., txHash capture)
+  } catch (err) {
+    const errorMessage = err.response?.data?.message || err.message || 'Failed to send transaction';
+    setError(errorMessage);
+    console.error('Fetch send transaction error:', err);
+    return null; // Return null on error for callers
+  }
+};
   // Add this function (placeholder; implement real proof fetching as needed)
-  const getWartTxProof = async (txHash) => {
-    console.log(`Fetching proof for txHash: ${txHash}`);
-    // TODO: Implement real API call to fetch proof (e.g., via axios to your node)
-    // For example: const response = await axios.get(`${API_URL}/proof/${txHash}?nodeBase=${encodeURIComponent(selectedNode)}`);
-    // return response.data.proof;
-    return { proof: 'dummy-proof-data' }; // Placeholder
-  };
+const getWartTxProof = async (txHash) => {
+  setLoading(true);
+  try {
+    const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+    console.log('Fetching Warthog TX proof from:', `${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
+    const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    console.log('TX proof response status:', response.status);
+    const data = response.data.data || response.data;
+    console.log('TX proof data:', data);
+    // Assuming the full TX data serves as the "proof" for backend validation (e.g., { blockHash, txIndex, from, to, amount, ... })
+    return data;
+  } catch (err) {
+    const errorMessage = err.response?.data?.message || err.message || 'Failed to fetch Warthog TX proof';
+    setError(errorMessage);
+    console.error('TX proof error:', err);
+    throw new Error(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {

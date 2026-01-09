@@ -36,6 +36,7 @@ function SubWallet({
   const [subSendFees, setSubSendFees] = useState({});
   const [subLockConditions, setSubLockConditions] = useState({});
   const [subUnlockConditions, setSubUnlockConditions] = useState({});
+  const [isDepositing, setIsDepositing] = useState({});
 
   const fetchCartesiSalt = async (userMainAddress) => {
     try {
@@ -105,18 +106,27 @@ function SubWallet({
   const depositToSub = async (sub) => {
     const amount = subDeposits[sub.index] || '';
     if (!amount) return setSubError('Enter deposit amount');
+    setIsDepositing(prev => ({ ...prev, [sub.index]: true }));
     setLoading(true);
     try {
-      await sendTransaction(null, mainWallet.address, sub.address, amount, '0.01');
-      toast.success('Deposited to sub-wallet! Submit tx proof to Cartesi for lock.');
+      const data = await sendTransaction(mainWallet.privateKey, mainWallet.address, sub.address, amount, '0.01');
+      const txHash = data?.data?.txHash || data?.txHash || data?.hash; // Updated extraction to handle nested structure
+      if (!txHash) throw new Error('No txHash in send response');
+      toast.success('Deposited to sub-wallet! Fetching proof and submitting lock...');
       const updatedSubs = subWallets.map(s => s.index === sub.index ? { ...s, balance: (parseFloat(s.balance) + parseFloat(amount)).toString() } : s);
       setSubWallets(updatedSubs);
       setSubDeposits(prev => ({ ...prev, [sub.index]: '' }));
       await refreshSubBalance(sub.address);
+
+      // Auto lock with Warthog TX proof
+      setSubTxHashes(prev => ({ ...prev, [sub.index]: txHash }));
+      await lockSubWithProof(sub, txHash);
     } catch (err) {
-      setSubError('Deposit failed');
-      toast.error('Deposit failed');
+      console.error('Deposit or auto-lock failed:', err);
+      setSubError('Deposit or auto-lock failed: ' + err.message);
+      toast.error('Deposit or auto-lock failed: ' + err.message);
     } finally {
+      setIsDepositing(prev => ({ ...prev, [sub.index]: false }));
       setLoading(false);
     }
   };
@@ -247,12 +257,14 @@ function SubWallet({
     }
   };
 
-  const lockSubWithProof = async (sub) => {
-    const txHash = subTxHashes[sub.index] || '';
+  const lockSubWithProof = async (sub, txHashOverride) => {
+    const txHash = txHashOverride || subTxHashes[sub.index] || '';
     const condition = subLockConditions[sub.index] || 'true';
     if (!txHash) return setSubError('Enter tx hash for lock proof');
     setLoading(true);
     try {
+      // Optional delay for TX mining
+      await new Promise(resolve => setTimeout(resolve, 5000));
       const proof = await getWartTxProof(txHash);
       const payload = { type: 'sub_lock', subAddress: sub.address, proof, recipient: address, condition }; // Added condition for merged handler
       await send(payload); // Use Cartesi send for input
@@ -268,6 +280,7 @@ function SubWallet({
       setSubTxHashes(prev => ({ ...prev, [sub.index]: '' }));
       setSubLockConditions(prev => ({ ...prev, [sub.index]: '' }));
     } catch (err) {
+      console.error('Lock failed:', err);
       setSubError('Lock failed');
       toast.error('Lock failed');
     } finally {
@@ -433,7 +446,7 @@ function SubWallet({
                 onChange={(e) => setSubDeposits(prev => ({ ...prev, [sub.index]: e.target.value }))}
                 disabled={sub.locked || loading}
               />
-              <button onClick={() => depositToSub(sub)} disabled={sub.locked || loading}>Deposit from Main</button>
+              <button onClick={() => depositToSub(sub)} disabled={sub.locked || loading || isDepositing[sub.index]}>{isDepositing[sub.index] ? 'Depositing...' : 'Deposit from Main & Auto-Lock'}</button>
               <input
                 type="text"
                 placeholder="Deposit Tx Hash for Lock"
