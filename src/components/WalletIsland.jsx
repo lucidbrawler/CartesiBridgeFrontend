@@ -47,6 +47,7 @@ export default function WalletIsland() {
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [vault, setVault] = useState({ liquid: "0", wWART: "0", CTSI: "0", eth: "0", pdai: "0" });
+  const [spoofedWwart, setSpoofedWwart] = useState({ amount: 0, subaddress: '' });
   const [burnAmt, setBurnAmt] = useState('');
   const [ethDepositAmt, setEthDepositAmt] = useState('');
   const [withdrawEthAmt, setWithdrawEthAmt] = useState('');
@@ -89,6 +90,18 @@ export default function WalletIsland() {
       return () => clearInterval(interval);
     }
   }, [connected, address]);
+
+  useEffect(() => {
+    const loadSpoofed = () => {
+      const storedSpoofed = localStorage.getItem('spoofedWwart');
+      if (storedSpoofed) {
+        setSpoofedWwart(JSON.parse(storedSpoofed));
+      }
+    };
+    loadSpoofed();
+    const interval = setInterval(loadSpoofed, 5000); // Check every 5s for updates
+    return () => clearInterval(interval);
+  }, []);
 
   // FUNCTIONS FROM ORIGINAL WalletIsland
   const connect = async () => {
@@ -298,6 +311,14 @@ export default function WalletIsland() {
             <p>PDAI Backing</p>
             <p className="text-2xl font-bold mt-2">{pdai.toFixed(4)}</p>
           </div>
+          {spoofedWwart.amount > 0 && (
+            <div className="box green">
+              <p className="big">Spoofed</p>
+              <p>wWART Minted</p>
+              <p className="text-2xl font-bold mt-2">{spoofedWwart.amount}</p>
+              <p className="small">Sub: {spoofedWwart.subaddress.slice(0,10)}...</p>
+            </div>
+          )}
         </div>
 
         <div className="actions">

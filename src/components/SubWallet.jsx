@@ -282,6 +282,9 @@ function SubWallet({
       const isLocked = await pollForLockNotice(sub.address);
       if (isLocked) {
         setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, locked: true } : s));
+        // Spoof mint wwart based on proof amount, tied to wart subaddress
+        const spoofedData = { amount: parseFloat(proof.transaction?.amount || 0), subaddress: sub.address };
+        localStorage.setItem('spoofedWwart', JSON.stringify(spoofedData));
         toast.success('Lock confirmed via notice! Sub-wallet locked.');
       } else {
         toast.error('Lock not confirmed within timeout. Check backend logs.');
