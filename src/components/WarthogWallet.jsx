@@ -468,7 +468,6 @@ useEffect(() => {
       throw new Error('Failed to round fee');
     }
   };
-
 const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddress = wallet?.address, to = toAddr, amountVal = amount, feeVal = fee) => {
   setError(null);
   setSendResult(null);
@@ -498,6 +497,34 @@ const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddre
     setError('Nonce or chain head not available. Please refresh balance and try again.');
     return;
   }
+
+  // NEW: Faux MetaMask confirmation with tx details
+  if (window.ethereum) {
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length === 0) {
+        throw new Error('No MetaMask account connected. Please connect your wallet.');
+      }
+      const signerAddress = accounts[0];  // Use connected L1 address for faux sign
+
+      const txSummaryMessage = `Confirm Warthog Transaction:\nFrom: ${fromAddress}\nTo: ${to}\nAmount: ${amountVal} WART\nFee: ${feeVal} WART\nNonce: ${txNonceId}\n\nThis is a confirmation step—approve to proceed.`;
+
+      // Trigger MetaMask popup with readable details
+      await window.ethereum.request({
+        method: 'personal_sign',
+        params: [txSummaryMessage, signerAddress],
+      });
+      // If here, user confirmed—proceed with actual software signing
+    } catch (err) {
+      setError(`MetaMask confirmation failed: ${err.message}. Transaction canceled.`);
+      return;  // Exit without sending
+    }
+  } else {
+    // No MetaMask: Skip faux confirmation (or prompt for installation)
+    console.warn('MetaMask not detected—proceeding without confirmation.');
+  }
+
+  // Proceed with WORKING tx building and software signing
   try {
     const pinHashBytes = ethersV6.getBytes('0x' + txPinHash);
     const heightBytes = new Uint8Array(4);

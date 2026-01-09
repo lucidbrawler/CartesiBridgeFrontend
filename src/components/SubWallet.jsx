@@ -104,33 +104,42 @@ function SubWallet({
   };
 
   const depositToSub = async (sub) => {
-    const amount = subDeposits[sub.index] || '';
-    if (!amount) return setSubError('Enter deposit amount');
-    setIsDepositing(prev => ({ ...prev, [sub.index]: true }));
-    setLoading(true);
-    try {
-      const data = await sendTransaction(mainWallet.privateKey, mainWallet.address, sub.address, amount, '0.01');
-      const txHash = data?.data?.txHash || data?.txHash || data?.hash; // Updated extraction to handle nested structure
-      if (!txHash) throw new Error('No txHash in send response');
-      toast.success('Deposited to sub-wallet! Fetching proof and submitting lock...');
-      const updatedSubs = subWallets.map(s => s.index === sub.index ? { ...s, balance: (parseFloat(s.balance) + parseFloat(amount)).toString() } : s);
-      setSubWallets(updatedSubs);
-      setSubDeposits(prev => ({ ...prev, [sub.index]: '' }));
-      await refreshSubBalance(sub.address);
+  const amount = subDeposits[sub.index] || '';
+  if (!amount) return setSubError('Enter deposit amount');
+  setIsDepositing(prev => ({ ...prev, [sub.index]: true }));
+  setLoading(true);
 
-      // Auto lock with Warthog TX proof
-      setSubTxHashes(prev => ({ ...prev, [sub.index]: txHash }));
-      await lockSubWithProof(sub, txHash);
-    } catch (err) {
-      console.error('Deposit or auto-lock failed:', err);
-      setSubError('Deposit or auto-lock failed: ' + err.message);
-      toast.error('Deposit or auto-lock failed: ' + err.message);
-    } finally {
-      setIsDepositing(prev => ({ ...prev, [sub.index]: false }));
-      setLoading(false);
-    }
-  };
+  const depositToast = toast.loading('Awaiting MetaMask confirmation for deposit...');
 
+  try {
+    const data = await sendTransaction(mainWallet.privateKey, mainWallet.address, sub.address, amount, '0.01');
+    const txHash = data?.data?.txHash || data?.txHash || data?.hash;
+    if (!txHash) throw new Error('No txHash in send response');
+
+    toast.success('Deposited to sub-wallet! Fetching proof and submitting lock...', { id: depositToast });
+
+    // Update balance locally immediately (this is fine, as it's after TX confirm but before lock)
+    const updatedSubs = subWallets.map(s => s.index === sub.index ? { ...s, balance: (parseFloat(s.balance) + parseFloat(amount)).toString() } : s);
+    setSubWallets(updatedSubs);
+    setSubDeposits(prev => ({ ...prev, [sub.index]: '' }));
+    setSubTxHashes(prev => ({ ...prev, [sub.index]: txHash }));
+
+    // Submit lock with proof + poll for confirmation (this will update locked state)
+    await lockSubWithProof(sub, txHash);
+
+    // Now refresh balance/lock state (will confirm the new locked: true from Cartesi notices)
+    await refreshSubBalance(sub.address);
+
+    toast.success('Deposit and lock complete!', { id: depositToast });
+  } catch (err) {
+    console.error('Deposit or auto-lock failed:', err);
+    setSubError('Deposit or auto-lock failed: ' + err.message);
+    toast.error('Deposit or auto-lock failed: ' + err.message, { id: depositToast });
+  } finally {
+    setIsDepositing(prev => ({ ...prev, [sub.index]: false }));
+    setLoading(false);
+  }
+};
   // NEW: Poll for lock notice confirmation
   const pollForLockNotice = async (subAddress, timeoutMs = 30000) => {
     const startTime = Date.now();
