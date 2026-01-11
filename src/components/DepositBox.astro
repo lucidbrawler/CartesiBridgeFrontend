@@ -1,34 +1,17 @@
 <!-- src/components/DepositBox.astro -->
 <section class="deposit-section">
-  <h3 class="section-title">
-    Deposit Real WART → Get wWART (then mint LIQUID)
-  </h3>
+ 
 
   <div class="deposit-card">
     <p class="label">Send WART to this address:</p>
     
     <div class="address-box">
-      <code class="warthog-address">a1b2c3d4e5f6789012345678901234567890abcd</code>
+      <h3 class="section-title">
+    Deposit Real WART → Get wWART (then mint LIQUID)
+  </h3>
     </div>
 
-    <button 
-      onClick={`
-        navigator.clipboard.writeText('a1b2c3d4e5f6789012345678901234567890abcd');
-        const btn = this;
-        const original = btn.innerHTML;
-        btn.innerHTML = 'Copied!';
-        btn.style.background = '#00ffcc';
-        btn.style.color = 'black';
-        setTimeout(() => {
-          btn.innerHTML = original;
-          btn.style.background = '';
-          btn.style.color = '';
-        }, 2000);
-      `}
-      class="copy-btn"
-    >
-      Copy Address
-    </button>
+    
 
     <p class="hint">
       After sending → wWART is auto-minted → deposit it via ERC20Portal → then click "Mint LIQUID"

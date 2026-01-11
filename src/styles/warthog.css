@@ -2,7 +2,36 @@
 
 /* Import Fonts from Wallet.css */
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Press+Start+2P&family=Orbitron:wght@400;700&family=Roboto:wght@400;500&display=swap');
+.controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
 
+.regen-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.regen-group input {
+  width: 140px;
+  padding: 0.5rem;
+}
+
+.secondary-btn {
+  background: #6b7280;
+  color: white;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.secondary-btn:hover {
+  background: #4b5563;
+}
 /* Warthog Section Container (Dark background like Wallet, with Liquid blur) */
 .warthog-section {
   margin-top: 40px;
