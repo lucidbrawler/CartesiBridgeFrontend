@@ -2,6 +2,7 @@
 // Updated with class-based styles for Warthog section
 // Refactored: Extracted WarthogWallet and SubWallet as separate components
 // README: This is the main component for the WalletIsland DApp, handling connection to MetaMask, vault management, deposits/withdrawals for backing assets, and toggling the Warthog native wallet section. It integrates Cartesi rollup interactions via portals and inputs. The Warthog section is conditionally rendered via a toggle, and it passes necessary props like the 'send' function for relaying proofs to the extracted WarthogWallet component.
+import './WalletIsland.css'; // Added external styles for modern, concise CSS
 
 import { useState, useEffect } from 'react';
 import { Wallet, Zap, ArrowDown, Coins, RefreshCw } from 'lucide-react';
@@ -58,6 +59,14 @@ export default function WalletIsland() {
 
   // NEW: Toggle for Warthog section (to keep UI optional in Astro island)
   const [showWarthog, setShowWarthog] = useState(false);
+
+  // Validation function for spoofed wwart data
+  const validateSpoofedWwart = (data) => {
+    if (!data || typeof data.amount !== 'number' || data.amount <= 0) return false;
+    if (!data.subaddress || typeof data.subaddress !== 'string' || data.subaddress.length === 0) return false;
+    // Additional checks if proof is included
+    return true;
+  };
 
   // useEffects FROM ORIGINAL WalletIsland
   useEffect(() => {
@@ -278,7 +287,7 @@ export default function WalletIsland() {
       <Toaster position="top-right" />
       <p className="connected-address">Connected: {address.slice(0,6)}...{address.slice(-4)}</p>
 
-      <div style={{ textAlign: 'center', margin: '30px 0' }}>
+      <div className="register-btn-container">
         <button onClick={() => send({ type: "register_address" })} className="register-address-btn" disabled={loading}>
           Register My Address with DApp
         </button>
@@ -330,14 +339,14 @@ export default function WalletIsland() {
             placeholder="Amount to burn"
             value={burnAmt}
             onChange={(e) => setBurnAmt(e.target.value)}
-            style={{ padding: '12px', margin: '0 12px', borderRadius: '8px', border: '1px solid #555', width: '140px' }}
+            className="burn-input"
           />
           <button onClick={() => burnAmt && send({ type: "burn_liquid", amount: burnAmt })} className="btn danger" disabled={!burnAmt || loading}>
             <ArrowDown className="inline mr-3" size={26} /> Burn & Redeem
           </button>
         </div>
 
-        <div style={{ textAlign: 'center', marginTop: '20px' }}>
+        <div className="refresh-btn-container">
           <button onClick={() => refreshVault(address)} className="btn small" disabled={loading}>
             <RefreshCw size={18} className="inline mr-2" /> Refresh Vault
           </button>
@@ -345,77 +354,82 @@ export default function WalletIsland() {
       </div>
 
       {/* Deposit Section */}
-      <div className="deposit-section" style={{ marginTop: '40px' }}>
-        <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Deposit Backing Assets</h2>
-        <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
+      <div className="deposit-section">
+        <h2>Deposit Backing Assets</h2>
+        <div className="deposit-grid">
           <div className="deposit-box">
             <p>ETH</p>
-            <input
-              type="number"
-              placeholder="Amount"
-              value={ethDepositAmt}
-              onChange={(e) => setEthDepositAmt(e.target.value)}
-              style={{ padding: '8px', marginRight: '10px', width: '100px' }}
-            />
-            <button onClick={depositEth} className="btn primary small" disabled={loading}>Deposit</button>
-            {/* Withdrawal Section */}
-<div className="withdraw-section" style={{ marginTop: '40px' }}>
-  <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Withdraw ETH (Trustless Voucher)</h2>
-  <div className="deposit-box" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-    <p>ETH Amount:</p>
-    <input
-      type="number"
-      placeholder="Amount"
-      value={withdrawEthAmt}
-      onChange={(e) => setWithdrawEthAmt(e.target.value)}
-      style={{ padding: '8px', margin: '0 10px', width: '100px' }}
-    />
-    <button onClick={withdrawEth} className="btn danger small" disabled={loading || !withdrawEthAmt}>Withdraw</button>
-  </div>
-  <p style={{ textAlign: 'center', marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
-    Note: After submission, monitor for the voucher in your wallet or L1 explorer. Execute it trustlessly on L1.
-  </p>
-</div>
+            <div className="deposit-controls">
+              <input
+                type="number"
+                placeholder="Amount"
+                value={ethDepositAmt}
+                onChange={(e) => setEthDepositAmt(e.target.value)}
+                className="deposit-input"
+              />
+              <button onClick={depositEth} className="btn primary small" disabled={loading}>Deposit</button>
+            </div>
+            <div className="withdraw-section">
+              <div className="withdraw-box">
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={withdrawEthAmt}
+                  onChange={(e) => setWithdrawEthAmt(e.target.value)}
+                  className="withdraw-input"
+                />
+                <button onClick={withdrawEth} className="btn danger small" disabled={loading || !withdrawEthAmt}>Withdraw</button>
+              </div>
+              <p className="withdraw-note">
+                Note: After submission, monitor for the voucher in your wallet or L1 explorer. Execute it trustlessly on L1.
+              </p>
+            </div>
           </div>
-          
+
           <div className="deposit-box">
             <p>wWART</p>
-            <input
-              type="number"
-              placeholder="Amount"
-              value={wwartDepositAmt}
-              onChange={(e) => setWwartDepositAmt(e.target.value)}
-              style={{ padding: '8px', marginRight: '10px', width: '100px' }}
-            />
-            <button onClick={depositWwart} className="btn primary small" disabled={loading}>Deposit</button>
+            <div className="deposit-controls">
+              <input
+                type="number"
+                placeholder="Amount"
+                value={wwartDepositAmt}
+                onChange={(e) => setWwartDepositAmt(e.target.value)}
+                className="deposit-input"
+              />
+              <button onClick={depositWwart} className="btn primary small" disabled={loading}>Deposit</button>
+            </div>
           </div>
           <div className="deposit-box">
             <p>CTSI</p>
-            <input
-              type="number"
-              placeholder="Amount"
-              value={ctsiDepositAmt}
-              onChange={(e) => setCtsiDepositAmt(e.target.value)}
-              style={{ padding: '8px', marginRight: '10px', width: '100px' }}
-            />
-            <button onClick={depositCtsi} className="btn primary small" disabled={loading}>Deposit</button>
+            <div className="deposit-controls">
+              <input
+                type="number"
+                placeholder="Amount"
+                value={ctsiDepositAmt}
+                onChange={(e) => setCtsiDepositAmt(e.target.value)}
+                className="deposit-input"
+              />
+              <button onClick={depositCtsi} className="btn primary small" disabled={loading}>Deposit</button>
+            </div>
           </div>
           <div className="deposit-box">
             <p>PDAI</p>
-            <input
-              type="number"
-              placeholder="Amount"
-              value={pdaiDepositAmt}
-              onChange={(e) => setPdaiDepositAmt(e.target.value)}
-              style={{ padding: '8px', marginRight: '10px', width: '100px' }}
-            />
-            <button onClick={depositPdai} className="btn primary small" disabled={loading}>Deposit</button>
+            <div className="deposit-controls">
+              <input
+                type="number"
+                placeholder="Amount"
+                value={pdaiDepositAmt}
+                onChange={(e) => setPdaiDepositAmt(e.target.value)}
+                className="deposit-input"
+              />
+              <button onClick={depositPdai} className="btn primary small" disabled={loading}>Deposit</button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* NEW: Toggle for Warthog Section */}
-      <div style={{ textAlign: 'center', margin: '30px 0' }}>
+      <div className="toggle-warthog">
         <button onClick={() => setShowWarthog(!showWarthog)} className="btn primary">
           {showWarthog ? 'Hide' : 'Show'} Warthog Native Wallet & Bridge
         </button>

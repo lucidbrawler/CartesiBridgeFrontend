@@ -1,0 +1,149 @@
+/* WalletIsland.css - Modern, concise styles */
+:root {
+  --primary-bg: #f8f9fa;
+  --accent-color: #007bff;
+  --danger-color: #dc3545;
+  --spacing-unit: 1rem;
+  --border-radius: 8px;
+  --border-color: #555;
+}
+
+.vault-section {
+  padding: var(--spacing-unit);
+}
+
+.connected-address {
+  text-align: center;
+  margin: calc(var(--spacing-unit) * 1.5) 0;
+  font-weight: bold;
+}
+
+.register-btn-container {
+  text-align: center;
+  margin: calc(var(--spacing-unit) * 1.5) 0;
+}
+
+.card {
+  background: var(--primary-bg);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-unit);
+  margin-bottom: var(--spacing-unit);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-unit);
+}
+
+.box {
+  padding: var(--spacing-unit);
+  border-radius: var(--border-radius);
+  text-align: center;
+}
+
+.yellow { background: #fff3cd; }
+.teal { background: #d1ecf1; }
+.purple { background: #e2e3e5; }
+.blue { background: #cce5ff; }
+.green { background: #d4edda; }
+
+.actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-unit);
+  margin-top: var(--spacing-unit);
+  flex-wrap: wrap;
+}
+
+.burn-input {
+  padding: calc(var(--spacing-unit) / 2);
+  margin: 0 calc(var(--spacing-unit) / 2);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  width: 140px;
+}
+
+.refresh-btn-container {
+  text-align: center;
+  margin-top: var(--spacing-unit);
+}
+
+.deposit-section h2 {
+  text-align: center;
+  margin-bottom: var(--spacing-unit);
+}
+
+.deposit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-unit);
+}
+
+.deposit-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-unit);
+  background: var(--primary-bg);
+  border-radius: var(--border-radius);
+  gap: calc(var(--spacing-unit) / 2);
+}
+
+.deposit-input {
+  padding: calc(var(--spacing-unit) / 2);
+  width: 100px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+}
+
+.deposit-controls {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing-unit) / 2);
+}
+
+.withdraw-section h2 {
+  text-align: center;
+  margin-bottom: var(--spacing-unit);
+}
+
+.withdraw-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: calc(var(--spacing-unit) / 2);
+  padding: var(--spacing-unit);
+  /* No background for withdraw box */
+}
+
+.withdraw-input {
+  padding: calc(var(--spacing-unit) / 2);
+  margin: 0 calc(var(--spacing-unit) / 2);
+  width: 100px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+}
+
+.withdraw-note {
+  text-align: center;
+  margin-top: calc(var(--spacing-unit) / 2);
+  font-size: 12px;
+  color: #aaa;
+}
+
+.toggle-warthog {
+  text-align: center;
+  margin: calc(var(--spacing-unit) * 1.5) 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .grid, .deposit-grid {
+    grid-template-columns: 1fr;
+  }
+  .actions {
+    flex-direction: column;
+  }
+}
