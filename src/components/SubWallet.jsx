@@ -27,7 +27,7 @@ function SubWallet({
   const [subTxHashes, setSubTxHashes] = useState({});
   const [isDepositing, setIsDepositing] = useState({});
   const [autoLockPhase, setAutoLockPhase] = useState({});
-
+const [isUnlocking, setIsUnlocking] = useState({});
   // Withdraw states
   const [subWithdrawAmounts, setSubWithdrawAmounts] = useState({});
   const [subWithdrawFees, setSubWithdrawFees] = useState({});
@@ -358,25 +358,34 @@ const withdrawToMain = async (sub) => {
     }
   };
 
-  const requestUnlock = async (sub) => {
-    setLoading(true);
-    try {
-      await send({ type: 'sub_unlock', subAddress: sub.address });
-      const unlocked = await pollForUnlockNotice(sub.address);
-      if (unlocked) {
-        setSubWallets(prev =>
-          prev.map(s => s.index === sub.index ? { ...s, locked: false } : s)
-        );
-        toast.success('Sub-wallet unlocked!');
-      } else {
-        toast.error('Unlock not confirmed in time');
-      }
-    } catch (err) {
-      toast.error('Unlock request failed');
-    } finally {
-      setLoading(false);
+ const requestUnlock = async (sub) => {
+  setIsUnlocking(prev => ({ ...prev, [sub.index]: true }));
+  setLoading(true); // optional — depends if you want global loading too
+
+  const toastId = toast.loading('Requesting unlock...');
+
+  try {
+    await send({ type: 'sub_unlock', subAddress: sub.address });
+
+    toast.loading('Waiting for unlock confirmation...', { id: toastId });
+
+    const unlocked = await pollForUnlockNotice(sub.address); // ← give it a bit more time if needed
+
+    if (unlocked) {
+      setSubWallets(prev =>
+        prev.map(s => s.index === sub.index ? { ...s, locked: false } : s)
+      );
+      toast.success('Sub-wallet unlocked!', { id: toastId });
+    } else {
+      toast.error('Unlock not confirmed in time', { id: toastId });
     }
-  };
+  } catch (err) {
+    toast.error('Unlock request failed: ' + err.message, { id: toastId });
+  } finally {
+    setIsUnlocking(prev => ({ ...prev, [sub.index]: false }));
+    setLoading(false);
+  }
+};
 
   const refreshSubBalance = async (subAddress) => {
     try {
@@ -455,23 +464,36 @@ return (
             </div>
           </div>
 
-          <div className="subwallet-actions">
-            <button
-              onClick={() => refreshSubBalance(sub.address)}
-              disabled={loading}
-              className="btn btn-outline"
-            >
-              Refresh
-            </button>
+     <div className="subwallet-actions">
+  <button
+    onClick={() => refreshSubBalance(sub.address)}
+    disabled={loading || isUnlocking[sub.index]}
+    className="btn btn-outline"
+  >
+    Refresh
+  </button>
 
-            {sub.locked ? (
-              <button
-                onClick={() => requestUnlock(sub)}
-                disabled={loading}
-                className="btn btn-danger"
-              >
-                Request Unlock
-              </button>
+  {sub.locked ? (
+    <>
+      <button
+        onClick={() => requestUnlock(sub)}
+        disabled={loading || isUnlocking[sub.index]}
+        className="btn btn-danger"
+      >
+        {isUnlocking[sub.index] ? 'Unlocking...' : 'Request Unlock'}
+      </button>
+
+      {/* ← moved here: full-width status message below buttons */}
+      {isUnlocking[sub.index] && (
+        <div className="status-message status-unlock">
+          <div className="spinner" />
+          <span>
+            Requesting unlock & waiting for confirmation
+            <LoadingDots />
+          </span>
+        </div>
+      )}
+    </>
             ) : (
               <>
                 {/* Deposit */}

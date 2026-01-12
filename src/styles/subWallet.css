@@ -1,3 +1,27 @@
+
+.subwallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.status-message {
+  width: 100%;                    /* forces it below */
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 123, 255, 0.08);  /* light blue for unlock */
+  border-radius: 6px;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-unlock {
+  color: #0d6efd;   /* bootstrap primary blue */
+  border: 1px solid rgba(13, 110, 253, 0.25);
+}
 .subwallet-section {
   padding: 1.5rem;
 }

@@ -15,7 +15,7 @@ const defaultNodeList = [
   'https://warthognode.duckdns.org',
 ];
 
-const WarthogWallet = ({ send /* other props */ }) => {
+const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoading, setLoading: propSetLoading }) => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [walletData, setWalletData] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -29,7 +29,7 @@ const WarthogWallet = ({ send /* other props */ }) => {
   const [pinHash, setPinHash] = useState(null);
   const [mnemonic, setMnemonic] = useState('');
   const [privateKeyInput, setPrivateKeyInput] = useState('');
-  const [address, setAddress] = useState('');
+  const [validateAddr, setValidateAddr] = useState('');
   const [toAddr, setToAddr] = useState('');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('');
@@ -45,14 +45,14 @@ const WarthogWallet = ({ send /* other props */ }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedNode, setSelectedNode] = useState(defaultNodeList[0]);
   const [showDownloadPrompt, setShowDownloadPrompt] = useState(false);
-  // Add these states
-  const [loading, setLoading] = useState(false);
+  // Loading handled by props
 const [subWallets, setSubWallets] = useState(() => {
   const saved = localStorage.getItem('warthogSubWallets');
   if (!saved) return [];
   try {
     const bytes = CryptoJS.AES.decrypt(saved, 'your-encryption-key-or-password');
     const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    if (!decrypted) return [];
     return JSON.parse(decrypted);
   } catch (err) {
     console.error('Failed to decrypt/parse subWallets:', err);
@@ -444,12 +444,12 @@ useEffect(() => {
   const handleValidateAddress = () => {
     setError(null);
     setValidateResult(null);
-    if (!address) {
+    if (!validateAddr) {
       setError('Please enter an address');
       return;
     }
     try {
-      const result = validateAddress(address);
+      const result = validateAddress(validateAddr);
       setValidateResult(result);
     } catch (err) {
       const errorMessage = err.message || 'Failed to validate address';
@@ -599,7 +599,7 @@ const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddre
 };
   // Add this function (placeholder; implement real proof fetching as needed)
 const getWartTxProof = async (txHash) => {
-  setLoading(true);
+  propSetLoading(true);
   try {
     const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
     console.log('Fetching Warthog TX proof from:', `${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
@@ -617,7 +617,7 @@ const getWartTxProof = async (txHash) => {
     console.error('TX proof error:', err);
     throw new Error(errorMessage);
   } finally {
-    setLoading(false);
+    propSetLoading(false);
   }
 };
 
@@ -860,8 +860,8 @@ const getWartTxProof = async (txHash) => {
               <label>Address:</label>
               <input
                 type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value.trim())}
+                value={validateAddr}
+                onChange={(e) => setValidateAddr(e.target.value.trim())}
                 placeholder="Enter 48-character address"
                 className="input"
               />
@@ -925,8 +925,9 @@ const getWartTxProof = async (txHash) => {
               sendTransaction={handleSendTransaction} // Matches your existing prop
               send={send}
               address={wallet.address} // Fixed name
-              loading={loading}
-              setLoading={setLoading}
+              l1Address={l1Address} // Pass L1 MetaMask address
+              loading={propLoading}
+              setLoading={propSetLoading}
               subWallets={subWallets}
               setSubWallets={setSubWallets}
               subIndex={subIndex}
