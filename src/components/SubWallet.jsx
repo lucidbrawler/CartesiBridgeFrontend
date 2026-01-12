@@ -12,7 +12,8 @@ function SubWallet({
   fetchBalanceAndNonce,
   sendTransaction,
   send,
-  address,
+  address, // Warthog main address
+  l1Address, // NEW: L1 MetaMask address
   loading,
   setLoading,
   subWallets,
@@ -201,7 +202,7 @@ function SubWallet({
           type: 'sub_lock',
           subAddress: sub.address,
           proof,
-          recipient: address,
+          recipient: l1Address, // UPDATED: Use L1 MetaMask address
         });
 
         const confirmed = await pollForLockNotice(sub.address, 45000);

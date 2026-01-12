@@ -1,5 +1,5 @@
 ---
-// src/components/RatioCalculator.astro — FULL PDAI VERSION
+// src/components/RatioCalculator.astro — UPDATED TO USDC (Jan 2026)
 ---
 <section class="ratio-calculator-banner">
   <div class="calculator-container">
@@ -38,14 +38,14 @@
         </div>
       </div>
 
-      <!-- PDAI -->
+      <!-- USDC -->
       <div class="slider-row">
-        <label class="token-label pdai">PDAI</label>
-        <input type="range" id="pdai-slider" min="0" max="100" value="34" class="slider pdai" />
-        <div class="value-card pdai">
-          <span id="pdai-value">34%</span>
-          <span id="pdai-tokens">0.00 PDAI</span>
-          <span id="pdai-usd" class="small">$0.00</span>
+        <label class="token-label usdc">USDC</label>
+        <input type="range" id="usdc-slider" min="0" max="100" value="34" class="slider usdc" />
+        <div class="value-card usdc">
+          <span id="usdc-value">34%</span>
+          <span id="usdc-tokens">0.00 USDC</span>
+          <span id="usdc-usd" class="small">$0.00</span>
         </div>
       </div>
     </div>
@@ -62,21 +62,21 @@
   const values = {
     wartPct: document.getElementById('wart-value'),
     ctsiPct: document.getElementById('ctsi-value'),
-    pdaiPct: document.getElementById('pdai-value'),
+    usdcPct: document.getElementById('usdc-value'),
     wartTokens: document.getElementById('wart-tokens'),
     ctsiTokens: document.getElementById('ctsi-tokens'),
-    pdaiTokens: document.getElementById('pdai-tokens'),
+    usdcTokens: document.getElementById('usdc-tokens'),
     wartUsd: document.getElementById('wart-usd'),
     ctsiUsd: document.getElementById('ctsi-usd'),
-    pdaiUsd: document.getElementById('pdai-usd'),
+    usdcUsd: document.getElementById('usdc-usd'),
     priceDisplay: document.getElementById('price-display')
   };
 
   let depositAmount = 1000;
-  let prices = { wart: 0.1631, ctsi: 0.03935, pdai: 1.00 };
+  let prices = { wart: 0.1631, ctsi: 0.03935, usdc: 1.00 };
 
   function formatNum(val) {
-    return val >= 1000 ? val.toLocaleString(undefined, {maximumFractionDigits: 0}) : val.toFixed(2);
+    return val >= 1000 ? val.toLocaleString(undefined, { maximumFractionDigits: 0 }) : val.toFixed(2);
   }
 
   function updateAll() {
@@ -85,43 +85,43 @@
 
     let wartPct = Number(sliders[0].value);
     let ctsiPct = Number(sliders[1].value);
-    let pdaiPct = Number(sliders[2].value);
+    let usdcPct = Number(sliders[2].value);
 
-    const sum = wartPct + ctsiPct + pdaiPct;
+    const sum = wartPct + ctsiPct + usdcPct;
     if (sum > 100) {
       const excess = sum - 100;
-      if (pdaiPct >= excess) pdaiPct -= excess;
+      if (usdcPct >= excess) usdcPct -= excess;
       else if (ctsiPct >= excess) ctsiPct -= excess;
       else wartPct -= excess;
 
       wartPct = Math.max(0, wartPct);
       ctsiPct = Math.max(0, ctsiPct);
-      pdaiPct = Math.max(0, pdaiPct);
+      usdcPct = Math.max(0, usdcPct);
 
       sliders[0].value = wartPct;
       sliders[1].value = ctsiPct;
-      sliders[2].value = pdaiPct;
+      sliders[2].value = usdcPct;
     }
 
     values.wartPct.textContent = wartPct + '%';
     values.ctsiPct.textContent = ctsiPct + '%';
-    values.pdaiPct.textContent = pdaiPct + '%';
+    values.usdcPct.textContent = usdcPct + '%';
 
     const wartUsd = depositAmount * (wartPct / 100);
     const ctsiUsd = depositAmount * (ctsiPct / 100);
-    const pdaiUsd = depositAmount * (pdaiPct / 100);
+    const usdcUsd = depositAmount * (usdcPct / 100);
 
     const wartTokens = wartUsd / prices.wart;
     const ctsiTokens = ctsiUsd / prices.ctsi;
-    const pdaiTokens = pdaiUsd / prices.pdai;
+    const usdcTokens = usdcUsd / prices.usdc;
 
     values.wartTokens.textContent = formatNum(wartTokens) + ' WART';
     values.ctsiTokens.textContent = formatNum(ctsiTokens) + ' CTSI';
-    values.pdaiTokens.textContent = formatNum(pdaiTokens) + ' PDAI';
+    values.usdcTokens.textContent = formatNum(usdcTokens) + ' USDC';
 
     values.wartUsd.textContent = '$' + wartUsd.toFixed(2);
     values.ctsiUsd.textContent = '$' + ctsiUsd.toFixed(2);
-    values.pdaiUsd.textContent = '$' + pdaiUsd.toFixed(2);
+    values.usdcUsd.textContent = '$' + usdcUsd.toFixed(2);
   }
 
   async function fetchPrices() {
@@ -131,8 +131,9 @@
       if (data.warthog?.usd) prices.wart = data.warthog.usd;
       if (data.cartesi?.usd) prices.ctsi = data.cartesi.usd;
 
+      // USDC is always ~1.00 — we keep it fixed
       values.priceDisplay.textContent = 
-        `CTSI $${prices.ctsi.toFixed(5)} | WART $${prices.wart.toFixed(4)} | PDAI $1.00`;
+        `CTSI $${prices.ctsi.toFixed(5)} | WART $${prices.wart.toFixed(4)} | USDC $1.00`;
       updateAll();
     } catch (e) {
       values.priceDisplay.textContent = "Price fetch failed — using cached";
@@ -187,19 +188,19 @@
   /* Colors */
   .slider.wart::-webkit-slider-thumb { background: #ffcc00; box-shadow: 0 0 35px #ffcc00cc; }
   .slider.ctsi::-webkit-slider-thumb { background: #00ffcc; box-shadow: 0 0 35px #00ffccbb; }
-  .slider.pdai::-webkit-slider-thumb { background: #4a90e2; box-shadow: 0 0 30px #4a90e299; }
+  .slider.usdc::-webkit-slider-thumb { background: #0035c8; box-shadow: 0 0 35px #0044ff; }
 
   .value-card.wart { border-color: #ffcc00; box-shadow: 0 0 25px rgba(255,204,0,0.3); }
   .value-card.ctsi { border-color: #00ffcc; box-shadow: 0 0 25px rgba(0,255,204,0.3); }
-  .value-card.pdai { border-color: #4a90e2; box-shadow: 0 0 25px rgba(74,144,226,0.3); background: rgba(74,144,226,0.08); }
+  .value-card.usdc { border-color: #0035c8; box-shadow: 0 0 25px rgba(0, 30, 200, 0.3); background: rgba(0,200,83,0.08); }
 
   .value-card.wart span:first-child { color: #ffcc00; text-shadow: 0 0 20px #ffcc0088; }
   .value-card.ctsi span:first-child { color: #00ffcc; text-shadow: 0 0 20px #00ffcc88; }
-  .value-card.pdai span:first-child { color: #4a90e2; text-shadow: 0 0 20px #4a90e288; }
+  .value-card.usdc span:first-child { color: #0035c8; text-shadow: 0 0 20px #0044ff; }
 
   .token-label.wart { color: #ffcc00; text-shadow: 0 0 15px #ffcc0044; }
   .token-label.ctsi { color: #00ffcc; text-shadow: 0 0 15px #00ffcc44; }
-  .token-label.pdai { color: #4a90e2; text-shadow: 0 0 15px #4a90e244; }
+  .token-label.usdc { color: #0035c8; text-shadow: 0 0 15px #0044ff; }
 
   .hint {
     margin-top: 6rem;

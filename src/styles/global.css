@@ -22,7 +22,7 @@ body {
 /* Warthog yellow glow */
 h1 {
   font-family: 'Orbitron', sans-serif;
-  font-size: 9rem;
+  font-size: 5rem;
   font-weight: 900;
   background: linear-gradient(90deg, #ffcc00, #ffff66, #ffcc00);
   -webkit-background-clip: text;
@@ -91,7 +91,7 @@ h1 {
 }
 
 .box .big {
-  font-size: 4.8rem;
+  font-size: 3.8rem;
   font-weight: 900;
   margin: 0;
               /* ← this gives the % room to breathe */

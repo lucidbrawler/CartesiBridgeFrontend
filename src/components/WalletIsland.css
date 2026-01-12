@@ -36,11 +36,9 @@
   gap: var(--spacing-unit);
 }
 
-.box {
-  padding: var(--spacing-unit);
-  border-radius: var(--border-radius);
-  text-align: center;
-}
+
+
+
 
 .yellow { background: #fff3cd; }
 .teal { background: #d1ecf1; }

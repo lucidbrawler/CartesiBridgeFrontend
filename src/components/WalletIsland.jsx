@@ -22,7 +22,7 @@ const ETHER_PORTAL_ADDRESS = "0xFfdbe43d4c855BF7e0f105c400A50857f53AB044";
 const ERC20_PORTAL_ADDRESS = "0x4b088b2dee4d3c6ec7aa5fb4e6cd8e9f0a1b2c3d";
 const WWART_ADDRESS = "0xYourWWARTContractHere"; // Update
 const CTSI_ADDRESS = "0xae7f61eCf06C65405560166b259C54031428A9C4";
-const PDAI_ADDRESS = "0xYourPDAIContractHere"; // Update, assumes 6 decimals
+const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"; // Real Sepolia USDC (6 decimals)
 
 const INPUT_BOX_ABI = [
   "function addInput(address dappAddress, bytes calldata input) external returns (uint256)"
@@ -47,26 +47,21 @@ export default function WalletIsland() {
   const [connected, setConnected] = useState(false);
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
-  const [vault, setVault] = useState({ liquid: "0", wWART: "0", CTSI: "0", eth: "0", pdai: "0" });
-  const [spoofedWwart, setSpoofedWwart] = useState({ amount: 0, subaddress: '' });
+  const [vault, setVault] = useState({ liquid: "0", wWART: "0", CTSI: "0", eth: "0", usdc: "0" });
+  const [spoofedWwart, setSpoofedWwart] = useState({ history: [], burnHistory: [], total: '0', totalBurned: '0' });
   const [burnAmt, setBurnAmt] = useState('');
   const [ethDepositAmt, setEthDepositAmt] = useState('');
   const [withdrawEthAmt, setWithdrawEthAmt] = useState('');
   const [wwartDepositAmt, setWwartDepositAmt] = useState('');
   const [ctsiDepositAmt, setCtsiDepositAmt] = useState('');
-  const [pdaiDepositAmt, setPdaiDepositAmt] = useState('');
+  const [usdcDepositAmt, setUsdcDepositAmt] = useState('');
+  const [withdrawWwartAmt, setWithdrawWwartAmt] = useState('');
+  const [withdrawCtsiAmt, setWithdrawCtsiAmt] = useState('');
+  const [withdrawUsdcAmt, setWithdrawUsdcAmt] = useState('');
   const [loading, setLoading] = useState(false);
 
   // NEW: Toggle for Warthog section (to keep UI optional in Astro island)
   const [showWarthog, setShowWarthog] = useState(false);
-
-  // Validation function for spoofed wwart data
-  const validateSpoofedWwart = (data) => {
-    if (!data || typeof data.amount !== 'number' || data.amount <= 0) return false;
-    if (!data.subaddress || typeof data.subaddress !== 'string' || data.subaddress.length === 0) return false;
-    // Additional checks if proof is included
-    return true;
-  };
 
   // useEffects FROM ORIGINAL WalletIsland
   useEffect(() => {
@@ -99,18 +94,6 @@ export default function WalletIsland() {
       return () => clearInterval(interval);
     }
   }, [connected, address]);
-
-  useEffect(() => {
-    const loadSpoofed = () => {
-      const storedSpoofed = localStorage.getItem('spoofedWwart');
-      if (storedSpoofed) {
-        setSpoofedWwart(JSON.parse(storedSpoofed));
-      }
-    };
-    loadSpoofed();
-    const interval = setInterval(loadSpoofed, 5000); // Check every 5s for updates
-    return () => clearInterval(interval);
-  }, []);
 
   // FUNCTIONS FROM ORIGINAL WalletIsland
   const connect = async () => {
@@ -158,6 +141,7 @@ export default function WalletIsland() {
       if (data.reports?.length > 0) {
         const payload = data.reports[0].payload;
         const json = JSON.parse(ethers.utils.toUtf8String(payload));
+        setSpoofedWwart({ history: json.spoofedMintHistory || [], burnHistory: json.spoofedBurnHistory || [], total: json.totalSpoofedMinted || '0', totalBurned: json.totalSpoofedBurned || '0' });
         setVault(json);
       }
     } catch (err) {
@@ -219,6 +203,33 @@ export default function WalletIsland() {
       });
   };
 
+  const withdrawWwart = () => {
+    if (!withdrawWwartAmt || loading) return;
+    send({ type: "withdraw_wwart", amount: withdrawWwartAmt })
+      .then(() => {
+        setWithdrawWwartAmt('');
+        toast.success('Withdrawal request sent! Voucher will be available for L1 claim after rollup processing.');
+      });
+  };
+
+  const withdrawCtsi = () => {
+    if (!withdrawCtsiAmt || loading) return;
+    send({ type: "withdraw_ctsi", amount: withdrawCtsiAmt })
+      .then(() => {
+        setWithdrawCtsiAmt('');
+        toast.success('Withdrawal request sent! Voucher will be available for L1 claim after rollup processing.');
+      });
+  };
+
+  const withdrawUsdc = () => {
+    if (!withdrawUsdcAmt || loading) return;
+    send({ type: "withdraw_usdc", amount: withdrawUsdcAmt })
+      .then(() => {
+        setWithdrawUsdcAmt('');
+        toast.success('Withdrawal request sent! Voucher will be available for L1 claim after rollup processing.');
+      });
+  };
+
   const depositErc20 = async (tokenAddress, amountStr, decimals) => {
     if (!amountStr || !signer) return;
     try {
@@ -246,20 +257,28 @@ export default function WalletIsland() {
 
   const depositWwart = () => depositErc20(WWART_ADDRESS, wwartDepositAmt, 18).then(() => setWwartDepositAmt(''));
   const depositCtsi = () => depositErc20(CTSI_ADDRESS, ctsiDepositAmt, 18).then(() => setCtsiDepositAmt(''));
-  const depositPdai = () => depositErc20(PDAI_ADDRESS, pdaiDepositAmt, 6).then(() => setPdaiDepositAmt(''));
+  const depositUsdc = () => depositErc20(USDC_ADDRESS, usdcDepositAmt, 6).then(() => setUsdcDepositAmt(''));
 
   const format = (val, decimals) => Number(ethers.utils.formatUnits(val || "0", decimals));
+  const formatWart = (e8Str) => {
+    if (!e8Str || e8Str === '0') return '0.00000000';
+    const bn = BigInt(e8Str);
+    const integer = (bn / 100000000n).toString();
+    let fractional = (bn % 100000000n).toString().padStart(8, '0').replace(/0+$/, '');
+    return fractional ? `${integer}.${fractional}` : integer;
+  };
+
   const liquid = format(vault.liquid, 18);
   const wWART = format(vault.wWART, 18);
   const CTSI = format(vault.CTSI, 18);
   const eth = Number(vault.eth || 0);
-  const pdai = format(vault.pdai, 6);  // assuming PDAI has 6 decimals
+  const usdc = format(vault.usdc, 6);
 
-  const totalBacking = wWART + CTSI + eth + pdai;
+  const totalBacking = wWART + CTSI + eth + usdc;
   const wwartPct = totalBacking > 0 ? (wWART / totalBacking * 100).toFixed(1) : 0;
   const ctsiPct = totalBacking > 0 ? (CTSI / totalBacking * 100).toFixed(1) : 0;
   const ethPct = totalBacking > 0 ? (eth / totalBacking * 100).toFixed(1) : 0;
-  const pdaiPct = totalBacking > 0 ? (pdai / totalBacking * 100).toFixed(1) : 0;
+  const usdcPct = totalBacking > 0 ? (usdc / totalBacking * 100).toFixed(1) : 0;
 
   if (!connected) {
     return (
@@ -316,18 +335,37 @@ export default function WalletIsland() {
             <p className="text-2xl font-bold mt-2">{eth.toFixed(6)}</p>
           </div>
           <div className="box blue">
-            <p className="big">{pdaiPct}%</p>
-            <p>PDAI Backing</p>
-            <p className="text-2xl font-bold mt-2">{pdai.toFixed(4)}</p>
+            <p className="big">{usdcPct}%</p>
+            <p>USDC Backing</p>
+            <p className="text-2xl font-bold mt-2">{usdc.toFixed(4)}</p>
           </div>
-          {spoofedWwart.amount > 0 && (
-            <div className="box green">
-              <p className="big">Spoofed</p>
-              <p>wWART Minted</p>
-              <p className="text-2xl font-bold mt-2">{spoofedWwart.amount}</p>
-              <p className="small">Sub: {spoofedWwart.subaddress.slice(0,10)}...</p>
-            </div>
-          )}
+          <div className="box green">
+    <p className="big">Spoofed wWART</p>
+    <p>Total Minted: {formatWart(spoofedWwart.total)}</p>
+    {spoofedWwart.history.length > 0 && (
+      <ul className="mint-history">
+        {spoofedWwart.history.map((m, i) => (
+          <li key={i}>
+            Mint {formatWart(m.amount)} to {m.subAddress.slice(0,10)}... at {new Date(m.timestamp).toLocaleString()}
+          </li>
+        ))}
+      </ul>
+    )}
+    {spoofedWwart.totalBurned > '0' && (
+      <>
+        <p>Total Burned: {formatWart(spoofedWwart.totalBurned)}</p>
+        {spoofedWwart.burnHistory.length > 0 && (
+          <ul className="burn-history">
+            {spoofedWwart.burnHistory.map((b, i) => (
+              <li key={i}>
+                Burn {formatWart(b.amount)} from {b.subAddress.slice(0,10)}... at {new Date(b.timestamp).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    )}
+  </div>
         </div>
 
         <div className="actions">
@@ -398,6 +436,21 @@ export default function WalletIsland() {
               />
               <button onClick={depositWwart} className="btn primary small" disabled={loading}>Deposit</button>
             </div>
+            <div className="withdraw-section">
+              <div className="withdraw-box">
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={withdrawWwartAmt}
+                  onChange={(e) => setWithdrawWwartAmt(e.target.value)}
+                  className="withdraw-input"
+                />
+                <button onClick={withdrawWwart} className="btn danger small" disabled={loading || !withdrawWwartAmt}>Withdraw</button>
+              </div>
+              <p className="withdraw-note">
+                Trustless Voucher: Monitor L1 for execution.
+              </p>
+            </div>
           </div>
           <div className="deposit-box">
             <p>CTSI</p>
@@ -411,18 +464,48 @@ export default function WalletIsland() {
               />
               <button onClick={depositCtsi} className="btn primary small" disabled={loading}>Deposit</button>
             </div>
+            <div className="withdraw-section">
+              <div className="withdraw-box">
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={withdrawCtsiAmt}
+                  onChange={(e) => setWithdrawCtsiAmt(e.target.value)}
+                  className="withdraw-input"
+                />
+                <button onClick={withdrawCtsi} className="btn danger small" disabled={loading || !withdrawCtsiAmt}>Withdraw</button>
+              </div>
+              <p className="withdraw-note">
+                Trustless Voucher: Monitor L1 for execution.
+              </p>
+            </div>
           </div>
           <div className="deposit-box">
-            <p>PDAI</p>
+            <p>USDC</p>
             <div className="deposit-controls">
               <input
                 type="number"
                 placeholder="Amount"
-                value={pdaiDepositAmt}
-                onChange={(e) => setPdaiDepositAmt(e.target.value)}
+                value={usdcDepositAmt}
+                onChange={(e) => setUsdcDepositAmt(e.target.value)}
                 className="deposit-input"
               />
-              <button onClick={depositPdai} className="btn primary small" disabled={loading}>Deposit</button>
+              <button onClick={depositUsdc} className="btn primary small" disabled={loading}>Deposit</button>
+            </div>
+            <div className="withdraw-section">
+              <div className="withdraw-box">
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={withdrawUsdcAmt}
+                  onChange={(e) => setWithdrawUsdcAmt(e.target.value)}
+                  className="withdraw-input"
+                />
+                <button onClick={withdrawUsdc} className="btn danger small" disabled={loading || !withdrawUsdcAmt}>Withdraw</button>
+              </div>
+              <p className="withdraw-note">
+                Trustless Voucher: Monitor L1 for execution.
+              </p>
             </div>
           </div>
         </div>
@@ -439,6 +522,7 @@ export default function WalletIsland() {
         <WarthogWallet 
           send={send} // Pass the send function for relaying proofs
           address={address} // Pass L1 address for relay
+          l1Address={address} // NEW: Explicitly pass L1 address
           loading={loading}
           setLoading={setLoading}
         />
