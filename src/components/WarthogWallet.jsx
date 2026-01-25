@@ -24,7 +24,7 @@ const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoa
   const [sendResult, setSendResult] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [balance, setBalance] = useState(null);
-  const [nonceId, setNonceId] = useState(null);
+  const [nextNonce, setNextNonce] = useState(null); // Renamed for clarity, like wallet.jsx
   const [pinHeight, setPinHeight] = useState(null);
   const [pinHash, setPinHash] = useState(null);
   const [mnemonic, setMnemonic] = useState('');
@@ -33,6 +33,7 @@ const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoa
   const [toAddr, setToAddr] = useState('');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('');
+  const [nonceInput, setNonceInput] = useState(''); // New: for manual nonce input
   const [wordCount, setWordCount] = useState('12');
   const [pathType, setPathType] = useState('hardened');
   const [walletAction, setWalletAction] = useState('create');
@@ -45,28 +46,35 @@ const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoa
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedNode, setSelectedNode] = useState(defaultNodeList[0]);
   const [showDownloadPrompt, setShowDownloadPrompt] = useState(false);
-  // Loading handled by props
-const [subWallets, setSubWallets] = useState(() => {
-  const saved = localStorage.getItem('warthogSubWallets');
-  if (!saved) return [];
-  try {
-    const bytes = CryptoJS.AES.decrypt(saved, 'your-encryption-key-or-password');
-    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-    if (!decrypted) return [];
-    return JSON.parse(decrypted);
-  } catch (err) {
-    console.error('Failed to decrypt/parse subWallets:', err);
-    return [];
-  }
-});
+  const [sending, setSending] = useState(false); // New: to disable button during send
+  const [failedTransactions, setFailedTransactions] = useState([]); // New: to log failed transactions
+  const [sentTransactions, setSentTransactions] = useState([]);
+  const [copiedTxId, setCopiedTxId] = useState(null); // New: to track copied Tx ID for feedback
+  const [copiedToAddr, setCopiedToAddr] = useState(null); // New: to track copied To Address for feedback
+  const [copiedFromAddr, setCopiedFromAddr] = useState(null); // New: to track copied From Address for feedback
+  const [isSmallScreen767, setIsSmallScreen767] = useState(false);
+  // Sub-wallet states
+  const [subWallets, setSubWallets] = useState(() => {
+    const saved = localStorage.getItem('warthogSubWallets');
+    if (!saved) return [];
+    try {
+      const bytes = CryptoJS.AES.decrypt(saved, 'your-encryption-key-or-password');
+      const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+      if (!decrypted) return [];
+      return JSON.parse(decrypted);
+    } catch (err) {
+      console.error('Failed to decrypt/parse subWallets:', err);
+      return [];
+    }
+  });
   const [subIndex, setSubIndex] = useState(0);
   const [subDepositAmt, setSubDepositAmt] = useState('');
   const [selectedSub, setSelectedSub] = useState(null);
   const [voucherPayload, setVoucherPayload] = useState('');
 
-useEffect(() => {
-  localStorage.removeItem('warthogSubWallets');
-}, []);
+  useEffect(() => {
+    localStorage.removeItem('warthogSubWallets');
+  }, []);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -81,6 +89,7 @@ useEffect(() => {
     };
   }, []);
 
+  // Handle app installed event
   useEffect(() => {
     const handleAppInstalled = () => {
       setDeferredPrompt(null);
@@ -113,6 +122,27 @@ useEffect(() => {
     }
   }, [showModal]);
 
+  // Poll for pending tx status every 30 seconds if there are pending txs
+  useEffect(() => {
+    if (sentTransactions.length > 0 && wallet?.address) {
+      const interval = setInterval(() => {
+        updateTxStatuses();
+      }, 30000); // 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [sentTransactions, wallet, selectedNode]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen767(window.innerWidth < 767);
+    };
+
+    handleResize(); // Set initial value on mount
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Add effect to persist subWallets (optional but recommended)
   useEffect(() => {
     localStorage.setItem('warthogSubWallets', JSON.stringify(subWallets));
@@ -132,7 +162,7 @@ useEffect(() => {
     setError(null);
     if (!isForSub) {
       setBalance(null);
-      setNonceId(null);
+      setNextNonce(null);
     }
     setPinHeight(null);
     setPinHash(null);
@@ -160,24 +190,19 @@ useEffect(() => {
 
       const balanceInWart = balanceData.balanceE8 !== undefined ? (balanceData.balanceE8 / 100000000).toFixed(8) : '0';
 
-      let retNonceId;
-      if (balanceData.nonceId !== undefined) {
-        const nonce = Number(balanceData.nonceId);
-        if (isNaN(nonce) || nonce < 0 || nonce > 4294967295) {
-          throw new Error('Invalid nonceId: must be a 32-bit unsigned integer');
-        }
-        retNonceId = nonce + 1;
-      } else {
-        retNonceId = 0;
-      }
+      const fetchedNonce = Number(balanceData.nonceId) || 0;
+      const newNextNonce = Math.max(nextNonce || 0, fetchedNonce + 1);
 
       if (!isForSub) {
         setBalance(balanceInWart);
-        setNonceId(retNonceId);
+        setNextNonce(newNextNonce);
+        if (wallet?.address) {
+          localStorage.setItem(`warthogNextNonce_${wallet.address}`, newNextNonce);
+        }
       }
 
       console.log('Chain head data:', chainHeadData);
-      return { balance: balanceInWart, nonceId: retNonceId, pinHeight: chainHeadData.pinHeight, pinHash: chainHeadData.pinHash };
+      return { balance: balanceInWart, nextNonce: newNextNonce, pinHeight: chainHeadData.pinHeight, pinHash: chainHeadData.pinHash };
     } catch (err) {
       const errorMessage =
         err.response?.data?.message ||
@@ -185,8 +210,28 @@ useEffect(() => {
         'Could not fetch chain head or balance';
       setError(errorMessage);
       console.error('Fetch error:', err);
-      return { balance: '0', nonceId: 0, pinHeight: null, pinHash: null };
+      return { balance: '0', nextNonce: 0, pinHeight: null, pinHash: null };
     }
+  };
+
+  const updateTxStatuses = async () => {
+    const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+    const updatedTxs = await Promise.all(
+      sentTransactions.map(async (tx) => {
+        if (tx.status === 'confirmed') return tx;
+        try {
+          const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${tx.txHash}&${nodeBaseParam}`);
+          const data = response.data.data?.transaction || response.data.data || response.data;
+          if (data.blockHeight !== undefined && data.confirmations > 0) {
+            return { ...tx, status: 'confirmed', confirmations: data.confirmations };
+          }
+          return tx;
+        } catch {
+          return tx;
+        }
+      })
+    );
+    setSentTransactions(updatedTxs);
   };
 
   const encryptWallet = (walletData, password) => {
@@ -276,6 +321,10 @@ useEffect(() => {
       }
       const decryptedWallet = decryptWallet(encrypted, password);
       setWallet(decryptedWallet);
+      const storedNonce = localStorage.getItem(`warthogNextNonce_${decryptedWallet.address}`);
+      if (storedNonce) {
+        setNextNonce(Number(storedNonce));
+      }
       setShowPasswordPrompt(false);
       setUploadedFile(null);
       setError(null);
@@ -288,9 +337,12 @@ useEffect(() => {
 
   const clearWallet = () => {
     localStorage.removeItem('warthogWallet');
+    if (wallet?.address) {
+      localStorage.removeItem(`warthogNextNonce_${wallet.address}`);
+    }
     setWallet(null);
     setBalance(null);
-    setNonceId(null);
+    setNextNonce(null);
     setPinHeight(null);
     setPinHash(null);
     setError(null);
@@ -299,6 +351,9 @@ useEffect(() => {
     setUploadedFile(null);
     setIsWalletProcessed(false);
     setIsLoggedIn(false);
+    setFailedTransactions([]); // Clear failed logs on wallet clear
+    setSentTransactions([]); // Clear sent logs on wallet clear
+    setNonceInput('');
   };
 
   const generateWallet = async (wordCount, pathType) => {
@@ -468,158 +523,230 @@ useEffect(() => {
       throw new Error('Failed to round fee');
     }
   };
-const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddress = wallet?.address, to = toAddr, amountVal = amount, feeVal = fee) => {
-  setError(null);
-  setSendResult(null);
-  if (!to || !amountVal || !feeVal) {
-    setError('Please fill in all transaction fields');
-    return;
-  }
-  const amountE8 = wartToE8(amountVal);
-  let feeE8;
-  try {
-    feeE8 = await getRoundedFeeE8(feeVal);
-  } catch {
-    setError('Invalid fee or failed to round');
-    return;
-  }
-  if (!amountE8 || !feeE8) {
-    setError('Invalid amount or fee: must be positive numbers');
-    return;
-  }
-  if (!fromPrivKey) {
-    setError('No private key available.');
-    return;
-  }
-  const isForSub = fromAddress !== wallet?.address;
-  const { nonceId: txNonceId, pinHeight: txPinHeight, pinHash: txPinHash } = await fetchBalanceAndNonce(fromAddress, isForSub);
-  if (txNonceId === null || txPinHeight === null || txPinHash === null) {
-    setError('Nonce or chain head not available. Please refresh balance and try again.');
-    return;
-  }
 
-  // NEW: Faux MetaMask confirmation with tx details
-  if (window.ethereum) {
+  const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddress = wallet?.address, to = toAddr, amountVal = amount, feeVal = fee) => {
+    if (sending) return; // Prevent multiple sends
+    setSending(true);
+    setError(null);
+    setSendResult(null);
+    if (!to || !amountVal || !feeVal) {
+      setError('Please fill in all transaction fields');
+      setSending(false);
+      return;
+    }
+    const amountNum = parseFloat(amountVal);
+    const feeNum = parseFloat(feeVal);
+    if (isNaN(amountNum) || amountNum <= 0 || isNaN(feeNum) || feeNum <= 0) {
+      setError('Invalid amount or fee: must be positive numbers');
+      setSending(false);
+      return;
+    }
+    const amountE8 = wartToE8(amountVal);
+    let feeE8;
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-      if (accounts.length === 0) {
-        throw new Error('No MetaMask account connected. Please connect your wallet.');
+      feeE8 = await getRoundedFeeE8(feeVal);
+    } catch {
+      setError('Invalid fee or failed to round');
+      setSending(false);
+      return;
+    }
+    if (!amountE8 || !feeE8) {
+      setError('Invalid amount or fee');
+      setSending(false);
+      return;
+    }
+    if (!fromPrivKey) {
+      setError('No private key available.');
+      setSending(false);
+      return;
+    }
+    const isForSub = fromAddress !== wallet?.address;
+    if (nextNonce === null || pinHeight === null || pinHash === null) {
+      setError('Nonce or chain head not available. Fetching latest...');
+      await fetchBalanceAndNonce(fromAddress, isForSub); // Fetch fresh if missing
+    }
+    if (nextNonce === null || pinHeight === null || pinHash === null) {
+      setError('Failed to fetch nonce or chain head. Please try again.');
+      setSending(false);
+      return;
+    }
+
+    let txNonce = nextNonce;
+    if (nonceInput !== '') {
+      const parsedNonce = Number(nonceInput);
+      if (isNaN(parsedNonce) || parsedNonce < 0 || !Number.isInteger(parsedNonce)) {
+        setError('Invalid nonce: must be a non-negative integer');
+        setSending(false);
+        return;
       }
-      const signerAddress = accounts[0];  // Use connected L1 address for faux sign
+      txNonce = parsedNonce;
+    }
 
-      const txSummaryMessage = `Confirm Warthog Transaction:\nFrom: ${fromAddress}\nTo: ${to}\nAmount: ${amountVal} WART\nFee: ${feeVal} WART\nNonce: ${txNonceId}\n\nThis is a confirmation step—approve to proceed.`;
+    // Capture transaction details for logging if failed
+    const txDetails = {
+      toAddr: to,
+      amount: amountVal,
+      fee: feeVal,
+      nonce: txNonce,
+      timestamp: new Date().toISOString(),
+    };
 
-      // Trigger MetaMask popup with readable details
-      await window.ethereum.request({
-        method: 'personal_sign',
-        params: [txSummaryMessage, signerAddress],
-      });
-      // If here, user confirmed—proceed with actual software signing
+    // NEW: Faux MetaMask confirmation with tx details
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length === 0) {
+          throw new Error('No MetaMask account connected. Please connect your wallet.');
+        }
+        const signerAddress = accounts[0];  // Use connected L1 address for faux sign
+
+        const txSummaryMessage = `Confirm Warthog Transaction:\nFrom: ${fromAddress}\nTo: ${to}\nAmount: ${amountVal} WART\nFee: ${feeVal} WART\nNonce: ${txNonce}\n\nThis is a confirmation step—approve to proceed.`;
+
+        // Trigger MetaMask popup with readable details
+        await window.ethereum.request({
+          method: 'personal_sign',
+          params: [txSummaryMessage, signerAddress],
+        });
+        // If here, user confirmed—proceed with actual software signing
+      } catch (err) {
+        setError(`MetaMask confirmation failed: ${err.message}. Transaction canceled.`);
+        setSending(false);
+        return;  // Exit without sending
+      }
+    } else {
+      // No MetaMask: Skip faux confirmation (or prompt for installation)
+      console.warn('MetaMask not detected—proceeding without confirmation.');
+    }
+
+    // Proceed with WORKING tx building and software signing
+    try {
+      const pinHashBytes = ethersV6.getBytes('0x' + pinHash);
+      const heightBytes = new Uint8Array(4);
+      new DataView(heightBytes.buffer).setUint32(0, pinHeight, false);
+      const nonceBytes = new Uint8Array(4);
+      new DataView(nonceBytes.buffer).setUint32(0, txNonce, false);
+      const reserved = new Uint8Array(3);
+      const feeBytes = new Uint8Array(8);
+      new DataView(feeBytes.buffer).setBigUint64(0, BigInt(feeE8), false);
+      const toRawBytes = ethersV6.getBytes('0x' + to.slice(0, 40));
+      const amountBytes = new Uint8Array(8);
+      new DataView(amountBytes.buffer).setBigUint64(0, BigInt(amountE8), false);
+
+      const messageBytes = ethersV6.concat([
+        pinHashBytes,
+        heightBytes,
+        nonceBytes,
+        reserved,
+        feeBytes,
+        toRawBytes,
+        amountBytes,
+      ]);
+
+      const txHash = ethersV6.sha256(messageBytes);
+      const txHashBytes = ethersV6.getBytes(txHash);
+
+      const signer = new ethersV6.Wallet('0x' + fromPrivKey);
+      const sig = signer.signingKey.sign(txHashBytes);
+
+      const rHex = sig.r.slice(2);
+      const sHex = sig.s.slice(2);
+      const recid = sig.v - 27;
+      const recidHex = recid.toString(16).padStart(2, '0');
+      const signature65 = rHex + sHex + recidHex;
+
+      const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+      console.log('Sending transaction request to:', `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`);
+      const response = await axios.post(
+        `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`,
+        {
+          pinHeight,
+          nonceId: txNonce,
+          toAddr: to,
+          amountE8,
+          feeE8,
+          signature65,
+        },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      console.log('Send transaction response status:', response.status);
+      const data = response.data;
+      console.log('Send transaction response data:', data);
+
+      // Check for error in response data
+      if (data.error || (data.code && data.code !== 0)) {
+        throw new Error(data.error || `Transaction error code: ${data.code}`);
+      }
+
+      setSendResult(data);
+
+      // Optimistic updates on success
+      const newNextNonce = Math.max(nextNonce || 0, txNonce + 1);
+      setNextNonce(newNextNonce);
+      if (wallet?.address && !isForSub) {
+        localStorage.setItem(`warthogNextNonce_${wallet.address}`, newNextNonce);
+      }
+      if (!isForSub) {
+        setBalance((parseFloat(balance) - amountNum - feeNum).toFixed(8));
+      }
+
+      // Log successful sent transaction as pending (only for main wallet)
+      if (!isForSub) {
+        setSentTransactions((prev) => [
+          ...prev,
+          { ...txDetails, txHash: data.data?.txHash || data.txHash, status: 'pending' }, // Adjust based on response structure
+        ]);
+      }
+
+      // Clear input fields on success if sending from main
+      if (!isForSub) {
+        setToAddr('');
+        setAmount('');
+        setFee('');
+        setNonceInput('');
+      }
+
+      return data; // Return response for sub-deposit use (e.g., txHash capture)
     } catch (err) {
-      setError(`MetaMask confirmation failed: ${err.message}. Transaction canceled.`);
-      return;  // Exit without sending
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to send transaction';
+      setError(errorMessage);
+      console.error('Fetch send transaction error:', err);
+
+      // Log the failed transaction (only for main wallet)
+      if (!isForSub) {
+        setFailedTransactions((prev) => [
+          ...prev,
+          { ...txDetails, error: errorMessage },
+        ]);
+      }
+
+      return null; // Return null on error for callers
+    } finally {
+      setSending(false);
     }
-  } else {
-    // No MetaMask: Skip faux confirmation (or prompt for installation)
-    console.warn('MetaMask not detected—proceeding without confirmation.');
-  }
-
-  // Proceed with WORKING tx building and software signing
-  try {
-    const pinHashBytes = ethersV6.getBytes('0x' + txPinHash);
-    const heightBytes = new Uint8Array(4);
-    new DataView(heightBytes.buffer).setUint32(0, txPinHeight, false);
-    const nonceBytes = new Uint8Array(4);
-    new DataView(nonceBytes.buffer).setUint32(0, txNonceId, false);
-    const reserved = new Uint8Array(3);
-    const feeBytes = new Uint8Array(8);
-    new DataView(feeBytes.buffer).setBigUint64(0, BigInt(feeE8), false);
-    const toRawBytes = ethersV6.getBytes('0x' + to.slice(0, 40));
-    const amountBytes = new Uint8Array(8);
-    new DataView(amountBytes.buffer).setBigUint64(0, BigInt(amountE8), false);
-
-    const messageBytes = ethersV6.concat([
-      pinHashBytes,
-      heightBytes,
-      nonceBytes,
-      reserved,
-      feeBytes,
-      toRawBytes,
-      amountBytes,
-    ]);
-
-    const txHash = ethersV6.sha256(messageBytes);
-    const txHashBytes = ethersV6.getBytes(txHash);
-
-    const signer = new ethersV6.Wallet('0x' + fromPrivKey);
-    const sig = signer.signingKey.sign(txHashBytes);
-
-    const rHex = sig.r.slice(2);
-    const sHex = sig.s.slice(2);
-    const recid = sig.v - 27;
-    const recidHex = recid.toString(16).padStart(2, '0');
-    const signature65 = rHex + sHex + recidHex;
-
-    const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
-    console.log('Sending transaction request to:', `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`);
-    const response = await axios.post(
-      `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`,
-      {
-        pinHeight: txPinHeight,
-        nonceId: txNonceId,
-        toAddr: to,
-        amountE8,
-        feeE8,
-        signature65,
-      },
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-    console.log('Send transaction response status:', response.status);
-    const data = response.data;
-    console.log('Send transaction response data:', data);
-    setSendResult(data);
-    // Clear input fields on success if sending from main
-    if (!isForSub) {
-      setToAddr('');
-      setAmount('');
-      setFee('');
-    }
-    // Refresh balance
-    await fetchBalanceAndNonce(fromAddress, isForSub);
-    if (!isForSub) {
-      fetchBalanceAndNonce(wallet.address);
-    }
-    return data; // Return response for sub-deposit use (e.g., txHash capture)
-  } catch (err) {
-    const errorMessage = err.response?.data?.message || err.message || 'Failed to send transaction';
-    setError(errorMessage);
-    console.error('Fetch send transaction error:', err);
-    return null; // Return null on error for callers
-  }
-};
+  };
   // Add this function (placeholder; implement real proof fetching as needed)
-const getWartTxProof = async (txHash) => {
-  propSetLoading(true);
-  try {
-    const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
-    console.log('Fetching Warthog TX proof from:', `${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
-    const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`, {
-      headers: { 'Content-Type': 'application/json' },
-    });
-    console.log('TX proof response status:', response.status);
-    const data = response.data.data || response.data;
-    console.log('TX proof data:', data);
-    // Assuming the full TX data serves as the "proof" for backend validation (e.g., { blockHash, txIndex, from, to, amount, ... })
-    return data;
-  } catch (err) {
-    const errorMessage = err.response?.data?.message || err.message || 'Failed to fetch Warthog TX proof';
-    setError(errorMessage);
-    console.error('TX proof error:', err);
-    throw new Error(errorMessage);
-  } finally {
-    propSetLoading(false);
-  }
-};
+  const getWartTxProof = async (txHash) => {
+    propSetLoading(true);
+    try {
+      const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+      console.log('Fetching Warthog TX proof from:', `${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
+      const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      console.log('TX proof response status:', response.status);
+      const data = response.data.data || response.data;
+      console.log('TX proof data:', data);
+      // Assuming the full TX data serves as the "proof" for backend validation (e.g., { blockHash, txIndex, from, to, amount, ... })
+      return data;
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to fetch Warthog TX proof';
+      setError(errorMessage);
+      console.error('TX proof error:', err);
+      throw new Error(errorMessage);
+    } finally {
+      propSetLoading(false);
+    }
+  };
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -632,6 +759,15 @@ const getWartTxProof = async (txHash) => {
       }
       setDeferredPrompt(null);
     }
+  };
+
+  const copyToClipboard = (text, setter) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setter(text); // Set to show "Copied!" feedback
+      setTimeout(() => setter(null), 2000); // Reset after 2s
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+    });
   };
 
   return (
@@ -907,12 +1043,114 @@ const getWartTxProof = async (txHash) => {
                   className="input"
                 />
               </div>
-              <button onClick={() => handleSendTransaction()}>Send Transaction</button>
+              <div className="form-group">
+                <label>Nonce:</label>
+                <input
+                  type="text"
+                  value={nonceInput}
+                  onChange={(e) => setNonceInput(e.target.value.trim())}
+                  placeholder={`Auto: ${nextNonce || 'Loading'}`}
+                  className="input"
+                />
+              </div>
+              <button onClick={() => handleSendTransaction()} disabled={sending}>
+                {sending ? 'Sending...' : 'Send Transaction'}
+              </button>
               {sendResult && (
                 <div className="result">
                   <pre>{JSON.stringify(sendResult, null, 2)}</pre>
                 </div>
               )}
+            </section>
+          )}
+
+          {isLoggedIn && sentTransactions.length > 0 && (
+            <section>
+              <h2>Sent Transactions Log</h2>
+              <button onClick={updateTxStatuses}>Refresh Tx Status</button>
+              <ul>
+                {sentTransactions.map((tx, index) => (
+                  <li key={index} className="tx-log-item">
+                    <p><strong>Timestamp:</strong> {tx.timestamp}</p>
+                    <p>
+                      <strong>From:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={wallet.address}
+                        onClick={() => copyToClipboard(wallet.address, setCopiedFromAddr)}
+                      >
+                        {isSmallScreen767 ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : wallet.address}
+                        {copiedFromAddr === wallet.address ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p>
+                      <strong>To:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={tx.toAddr}
+                        onClick={() => copyToClipboard(tx.toAddr, setCopiedToAddr)}
+                      >
+                        {isSmallScreen767 ? `${tx.toAddr.slice(0, 6)}...${tx.toAddr.slice(-4)}` : tx.toAddr}
+                        {copiedToAddr === tx.toAddr ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p><strong>Amount:</strong> {tx.amount} WART</p>
+                    <p><strong>Fee:</strong> {tx.fee} WART</p>
+                    <p><strong>Nonce (Session Index):</strong> {tx.nonce}</p>
+                    <p>
+                      <strong>Tx Hash:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={tx.txHash}
+                        onClick={() => copyToClipboard(tx.txHash, setCopiedTxId)}
+                      >
+                        {isSmallScreen767 ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : tx.txHash}
+                        {copiedTxId === tx.txHash ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p><strong>Status:</strong> {tx.status} {tx.confirmations ? `(${tx.confirmations} confirmations)` : ''}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {isLoggedIn && failedTransactions.length > 0 && (
+            <section>
+              <h2>Failed Transactions Log</h2>
+              <ul>
+                {failedTransactions.map((tx, index) => (
+                  <li key={index} className="tx-log-item">
+                    <p><strong>Timestamp:</strong> {tx.timestamp}</p>
+                    <p>
+                      <strong>From:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={wallet.address}
+                        onClick={() => copyToClipboard(wallet.address, setCopiedFromAddr)}
+                      >
+                        {isSmallScreen767 ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : wallet.address}
+                        {copiedFromAddr === wallet.address ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p>
+                      <strong>To:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={tx.toAddr}
+                        onClick={() => copyToClipboard(tx.toAddr, setCopiedToAddr)}
+                      >
+                        {isSmallScreen767 ? `${tx.toAddr.slice(0, 6)}...${tx.toAddr.slice(-4)}` : tx.toAddr}
+                        {copiedToAddr === tx.toAddr ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p><strong>Amount:</strong> {tx.amount} WART</p>
+                    <p><strong>Fee:</strong> {tx.fee} WART</p>
+                    <p><strong>Nonce:</strong> {tx.nonce}</p>
+                    <p><strong>Error:</strong> {tx.error}</p>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 
@@ -942,6 +1180,7 @@ const getWartTxProof = async (txHash) => {
               setWartAmount={setAmount} // Maps to parent's setAmount
               setWartFee={setFee} // Maps to parent's setFee
               getWartTxProof={getWartTxProof} // New function
+              sentTransactions={sentTransactions}
             />
           )}
 

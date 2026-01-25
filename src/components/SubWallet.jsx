@@ -5,10 +5,13 @@ import { ethers } from 'ethers';
 import { Toaster, toast } from 'react-hot-toast';
 import '../styles/subWallet.css';
 const GRAPHQL_URL = 'http://localhost:8080/graphql';
+const INSPECT_URL = "/rollup/inspect";
+const API_URL = '/api/proxy';
 
 function SubWallet({
   mainWallet,
   mainMnemonic,
+  selectedNode,
   fetchBalanceAndNonce,
   sendTransaction,
   send,
@@ -21,22 +24,60 @@ function SubWallet({
   subIndex,
   setSubIndex,
   getWartTxProof,
+  sentTransactions, // NEW
 }) {
   const [subError, setSubError] = useState(null);
   const [subDeposits, setSubDeposits] = useState({});
-  const [subTxHashes, setSubTxHashes] = useState({});
   const [isDepositing, setIsDepositing] = useState({});
   const [autoLockPhase, setAutoLockPhase] = useState({});
-const [isUnlocking, setIsUnlocking] = useState({});
+  const [isUnlocking, setIsUnlocking] = useState({});
   // Withdraw states
   const [subWithdrawAmounts, setSubWithdrawAmounts] = useState({});
   const [subWithdrawFees, setSubWithdrawFees] = useState({});
   const [isWithdrawing, setIsWithdrawing] = useState({});
 
+  // Sweep states
+  const [subSweepAmounts, setSubSweepAmounts] = useState({});
+  const [isSweeping, setIsSweeping] = useState({});
+
   // Regenerate state
   const [regenIndex, setRegenIndex] = useState('');
 
+  // Active deposit tx monitoring (for enabling manual sweep after confirmation)
+  const [activeDepositTxs, setActiveDepositTxs] = useState({}); // { subIndex: txHash }
+
+  // Screen size state
+  const [isSmallScreen, setIsSmallScreen] = useState(window.innerWidth <= 688);
+
   const client = new GraphQLClient(GRAPHQL_URL);
+
+  // Monitor deposit confirmations to enable manual sweep
+  useEffect(() => {
+    Object.entries(activeDepositTxs).forEach(([subIndex, txHash]) => {
+      const tx = sentTransactions.find(t => t.txHash === txHash);
+      if (tx && tx.status === 'confirmed') {
+        // Deposit confirmed, enable manual sweep by clearing locking
+        setSubWallets(prev =>
+          prev.map(s => s.index === Number(subIndex) ? { ...s, locking: false } : s)
+        );
+        setActiveDepositTxs(prev => {
+          const newState = { ...prev };
+          delete newState[subIndex];
+          return newState;
+        });
+        toast.success('Deposit confirmed! You can now sweep to vault manually.');
+      }
+    });
+  }, [sentTransactions, activeDepositTxs, setSubWallets]);
+
+  // Handle resize for screen size
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen(window.innerWidth <= 688);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Animated dots
   const LoadingDots = () => {
@@ -46,6 +87,12 @@ const [isUnlocking, setIsUnlocking] = useState({});
       return () => clearInterval(interval);
     }, []);
     return <span>{'.'.repeat(dots)}</span>;
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success('Address copied to clipboard!'))
+      .catch(() => toast.error('Failed to copy address'));
   };
 
   const fetchCartesiSalt = async (userMainAddress) => {
@@ -70,13 +117,14 @@ const [isUnlocking, setIsUnlocking] = useState({});
 
     try {
       const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
-      const publicKey = hdNode.publicKey.slice(2);
-      const sha = ethers.utils.sha256('0x' + publicKey).slice(2);
-      const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
-      const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
+      const publicKeyHex = ethers.utils.hexlify(hdNode.publicKey);
+      const shaHex = ethers.utils.sha256(publicKeyHex);
+      const ripemdHex = ethers.utils.ripemd160(shaHex);
+      const ripemd = ripemdHex.slice(2);
+      const checksum = ethers.utils.sha256(ripemdHex).slice(2, 10);
       const subAddress = ripemd + checksum;
 
-      const newSub = { index: saltedIndex, address: subAddress, locked: false, balance: '0' };
+      const newSub = { index: saltedIndex, address: subAddress, locked: false, balance: '0', vaultAddress: null, depositTxHash: null, sweepTxHash: null, pendingVaultAddress: null, locking: false, vaultBalance: null };
       setSubWallets(prev => [...prev, newSub]);
       setSubIndex(prev => prev + 1);
 
@@ -96,16 +144,17 @@ const [isUnlocking, setIsUnlocking] = useState({});
 
     try {
       const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
-      const publicKey = hdNode.publicKey.slice(2);
-      const sha = ethers.utils.sha256('0x' + publicKey).slice(2);
-      const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
-      const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
+      const publicKeyHex = ethers.utils.hexlify(hdNode.publicKey);
+      const shaHex = ethers.utils.sha256(publicKeyHex);
+      const ripemdHex = ethers.utils.ripemd160(shaHex);
+      const ripemd = ripemdHex.slice(2);
+      const checksum = ethers.utils.sha256(ripemdHex).slice(2, 10);
       const subAddress = ripemd + checksum;
 
       // Replace or add the regenerated wallet
       setSubWallets(prev => {
         const filtered = prev.filter(s => s.index !== saltedIndex);
-        return [...filtered, { index: saltedIndex, address: subAddress, locked: false, balance: '0' }];
+        return [...filtered, { index: saltedIndex, address: subAddress, locked: false, balance: '0', vaultAddress: null, depositTxHash: null, sweepTxHash: null, pendingVaultAddress: null, locking: false, vaultBalance: null }];
       });
 
       // If it was the last one or higher, update subIndex if needed
@@ -148,22 +197,38 @@ const [isUnlocking, setIsUnlocking] = useState({});
       setSubWallets(prev =>
         prev.map(s =>
           s.index === sub.index
-            ? { ...s, balance: (Number(s.balance || 0) + Number(amount)).toFixed(8) }
+            ? { ...s, balance: (Number(s.balance || 0) + Number(amount)).toFixed(8), depositTxHash: txHash }
             : s
         )
       );
 
       setSubDeposits(prev => ({ ...prev, [sub.index]: '' }));
-      setSubTxHashes(prev => ({ ...prev, [sub.index]: txHash }));
 
-      const locked = await lockSubWithProof(sub, txHash);
-      if (locked) {
-        toast.success('Deposit & lock completed!', { id: toastId });
+      // Send sub_lock immediately
+      const vaultAddress = await sendSubLock(sub, txHash);
+      if (vaultAddress) {
+        setSubWallets(prev =>
+          prev.map(s => s.address === sub.address ? { ...s, pendingVaultAddress: vaultAddress, locking: true } : s)
+        );
+        setActiveDepositTxs(prev => ({ ...prev, [sub.index]: txHash })); // Start monitoring
+        toast.success('Deposit sent! Monitoring for confirmations...', { id: toastId });
       } else {
-        toast.warning('Deposit OK — auto-lock failed. Try again later.', { id: toastId });
+        toast.warning('Deposit sent, but sub_lock failed. Try again later.', { id: toastId });
       }
 
       await refreshSubBalance(sub.address);
+
+      // Fetch and set vault balance after deposit
+      if (vaultAddress) {
+        try {
+          const vaultBalanceData = await fetchBalanceAndNonce(vaultAddress, false);
+          setSubWallets(prev =>
+            prev.map(s => s.address === sub.address ? { ...s, vaultBalance: vaultBalanceData.balance || '0' } : s)
+          );
+        } catch (err) {
+          console.error('Failed to fetch vault balance:', err);
+        }
+      }
     } catch (err) {
       toast.error('Deposit failed: ' + err.message, { id: toastId });
     } finally {
@@ -173,120 +238,179 @@ const [isUnlocking, setIsUnlocking] = useState({});
     }
   };
 
-  const lockSubWithProof = async (sub, txHashOverride) => {
-    const txHash = txHashOverride || subTxHashes[sub.index] || '';
-    if (!txHash) {
-      toast.error('No transaction hash available');
-      return false;
+  // Simplified: Send sub_lock and poll for pending notice
+  const sendSubLock = async (sub, txHash) => {
+    try {
+      const proof = await getWartTxProof(txHash);
+      await send({
+        type: 'sub_lock',
+        subAddress: sub.address,
+        proof,
+        index: sub.index,
+        recipient: l1Address,
+      });
+      const pendingNotice = await pollForPendingNotice(sub.address);
+      return pendingNotice ? pendingNotice.vaultAddress : null;
+    } catch (err) {
+      console.error('sendSubLock error:', err.message);
+      return null;
     }
-
-    setAutoLockPhase(prev => ({ ...prev, [sub.index]: 'preparing' }));
-
-    const delays = [6000, 8000, 10000, 12000, 15000, 20000];
-
-    for (let attempt = 0; attempt < delays.length; attempt++) {
-      await new Promise(r => setTimeout(r, delays[attempt]));
-      setAutoLockPhase(prev => ({ ...prev, [sub.index]: 'fetching' }));
-
-      try {
-        const proof = await getWartTxProof(txHash);
-        console.log('Proof fetched:', {
-          to: proof?.transaction?.toAddress,
-          from: proof?.transaction?.fromAddress,
-          value: proof?.transaction?.value?.toString()
-        });
-
-        setAutoLockPhase(prev => ({ ...prev, [sub.index]: 'confirming' }));
-
-        await send({
-          type: 'sub_lock',
-          subAddress: sub.address,
-          proof,
-          recipient: l1Address, // UPDATED: Use L1 MetaMask address
-        });
-
-        const confirmed = await pollForLockNotice(sub.address, 45000);
-        if (confirmed) {
-          setSubWallets(prev =>
-            prev.map(s => s.index === sub.index ? { ...s, locked: true } : s)
-          );
-          setAutoLockPhase(prev => ({ ...prev, [sub.index]: null }));
-          return true;
-        }
-      } catch (err) {
-        console.warn(`Proof attempt ${attempt + 1} failed:`, err.message);
-      }
-    }
-
-    setAutoLockPhase(prev => ({ ...prev, [sub.index]: null }));
-    toast.error('Auto-lock timed out — try manual lock later');
-    return false;
   };
-const withdrawToMain = async (sub) => {
-  const amountStr = subWithdrawAmounts[sub.index] || '';
-  const fee = subWithdrawFees[sub.index] || '0.01';
 
-  let amount = amountStr === 'max' ? sub.balance : amountStr;
+  // Sweep to vault and complete lock
+  const sweepToVault = async (sub, amount) => {
+    const vaultAddress = sub.vaultAddress || sub.pendingVaultAddress;
+    if (!vaultAddress) return toast.error('No vault address available');
 
-  if (!amount || isNaN(amount) || Number(amount) <= 0) {
-    return toast.error('Enter a valid amount');
-  }
-  if (Number(amount) > Number(sub.balance || 0)) {
-    return toast.error('Insufficient balance');
-  }
-
-  setIsWithdrawing(prev => ({ ...prev, [sub.index]: true }));
-  setLoading(true);
-  const toastId = toast.loading('Processing withdrawal...');
-
-  try {
-    if (!mainMnemonic) throw new Error('Main mnemonic required');
-
-    const path = `m/44'/2070'/0'/0/${sub.index}'`;
-    const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
-    
-    // FIX: Remove '0x' prefix if present → send raw hex
-    let subPrivateKey = hdNode.privateKey;
-    if (subPrivateKey.startsWith('0x')) {
-      subPrivateKey = subPrivateKey.slice(2);
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      return toast.error('Enter a valid amount');
+    }
+    if (Number(amount) > Number(sub.balance || 0)) {
+      return toast.error('Insufficient balance');
     }
 
-    const txData = await sendTransaction(
-      subPrivateKey,           // ← now raw hex without 0x
-      sub.address,
-      address,                 // main wallet address
-      amount,
-      fee
-    );
+    setIsSweeping(prev => ({ ...prev, [sub.index]: true }));
+    setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, locking: true } : s));
+    setLoading(true);
+    const toastId = toast.loading('Sweeping to vault...');
 
-    const txHash = txData?.data?.txHash || txData?.txHash || txData?.hash;
-    if (!txHash) throw new Error('No tx hash received');
+    try {
+      if (!mainMnemonic) throw new Error('Main mnemonic required');
 
-    toast.success('Withdrawal sent!', { id: toastId });
+      // Derive sub's private key
+      const saltedIndex = sub.index;
+      const path = `m/44'/2070'/0'/0/${saltedIndex}'`;
+      const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
+      let subPrivateKey = ethers.utils.hexlify(hdNode.privateKey);
+      if (subPrivateKey.startsWith('0x')) subPrivateKey = subPrivateKey.slice(2);
 
-    setSubWallets(prev =>
-      prev.map(s =>
-        s.index === sub.index
-          ? { ...s, balance: (Number(s.balance || 0) - Number(amount)).toFixed(8) }
-          : s
-      )
-    );
+      const txData = await sendTransaction(
+        subPrivateKey, // Sub's PK as hex string without 0x
+        sub.address, // From
+        vaultAddress, // To
+        amount,
+        '0.01' // Fee
+      );
 
-    setSubWithdrawAmounts(prev => ({ ...prev, [sub.index]: '' }));
-    setSubWithdrawFees(prev => ({ ...prev, [sub.index]: '0.01' }));
+      const sweepTxHash = txData?.data?.txHash || txData?.txHash;
+      if (!sweepTxHash) throw new Error('No sweep tx hash');
 
-    setTimeout(async () => {
-      await refreshSubBalance(sub.address);
-    }, 4000);
+      setSubWallets(prev => prev.map(s => s.index === sub.index ? { ...s, sweepTxHash } : s));
 
-  } catch (err) {
-    console.error('Withdraw error:', err);
-    toast.error('Withdrawal failed: ' + (err.message || 'Unknown error'), { id: toastId });
-  } finally {
-    setIsWithdrawing(prev => ({ ...prev, [sub.index]: false }));
-    setLoading(false);
-  }
-};
+      // Wait for sweep confirmations
+      const sweepConfirmed = await pollTxConfirmations(sweepTxHash, 2);
+      if (!sweepConfirmed) throw new Error('Sweep not confirmed in time');
+
+      // Get proof of sweep tx
+      const sweepProof = await getWartTxProof(sweepTxHash);
+
+      // Update toast to indicate sweep is complete (proof received)
+      toast.success('Sweep complete! Finalizing lock...', { id: toastId });
+
+      // Send sweep_lock to complete
+      await send({
+        type: 'sweep_lock',
+        subAddress: sub.address,
+        sweepProof,
+      });
+
+      // Poll for completion
+      const completed = await pollForLockNotice(sub.address, 90000); // Increased timeout
+      if (completed) {
+        setSubWallets(prev =>
+          prev.map(s => s.index === sub.index ? { ...s, locked: true, locking: false, vaultAddress: s.pendingVaultAddress || s.vaultAddress, pendingVaultAddress: null } : s)
+        );
+        // Refresh subwallet balance (should be 0 after sweep)
+        await refreshSubBalance(sub.address);
+        // Fetch and display vault balance (Warhog address balance)
+        if (vaultAddress) {
+          const vaultBalanceData = await fetchBalanceAndNonce(vaultAddress, false);
+          toast.success(`Vault Balance: ${vaultBalanceData.balance || '0'} WART`, { duration: 4000 });
+        }
+        toast.success('Lock completed! Vault received swept deposit.', { id: toastId });
+      } else {
+        toast.error('Lock completion not confirmed', { id: toastId });
+        setSubWallets(prev =>
+          prev.map(s => s.index === sub.index ? { ...s, locking: false } : s)
+        );
+      }
+    } catch (err) {
+      toast.error('Sweep and lock failed: ' + err.message, { id: toastId });
+      setSubWallets(prev =>
+        prev.map(s => s.index === sub.index ? { ...s, locking: false } : s)
+      );
+    } finally {
+      setIsSweeping(prev => ({ ...prev, [sub.index]: false }));
+      setLoading(false);
+    }
+  };
+
+  const withdrawToMain = async (sub) => {
+    const amountStr = subWithdrawAmounts[sub.index] || '';
+    const fee = subWithdrawFees[sub.index] || '0.01';
+
+    let amount = amountStr === 'max' ? sub.balance : amountStr;
+
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      return toast.error('Enter a valid amount');
+    }
+    if (Number(amount) > Number(sub.balance || 0)) {
+      return toast.error('Insufficient balance');
+    }
+
+    setIsWithdrawing(prev => ({ ...prev, [sub.index]: true }));
+    setLoading(true);
+    const toastId = toast.loading('Processing withdrawal...');
+
+    try {
+      if (!mainMnemonic) throw new Error('Main mnemonic required');
+
+      const path = `m/44'/2070'/0'/0/${sub.index}'`;
+      const hdNode = ethers.utils.HDNode.fromMnemonic(mainMnemonic).derivePath(path);
+
+      // FIX: Convert bytes to hex string and remove '0x' prefix if present → send raw hex
+      let subPrivateKey = ethers.utils.hexlify(hdNode.privateKey);
+      if (subPrivateKey.startsWith('0x')) {
+        subPrivateKey = subPrivateKey.slice(2);
+      }
+
+      const txData = await sendTransaction(
+        subPrivateKey,           // ← now raw hex without 0x
+        sub.address,
+        address,                 // main wallet address
+        amount,
+        fee
+      );
+
+      const txHash = txData?.data?.txHash || txData?.txHash || txData?.hash;
+      if (!txHash) throw new Error('No tx hash received');
+
+      toast.success('Withdrawal sent!', { id: toastId });
+
+      setSubWallets(prev =>
+        prev.map(s =>
+          s.index === sub.index
+            ? { ...s, balance: (Number(s.balance || 0) - Number(amount)).toFixed(8) }
+            : s
+        )
+      );
+
+      setSubWithdrawAmounts(prev => ({ ...prev, [sub.index]: '' }));
+      setSubWithdrawFees(prev => ({ ...prev, [sub.index]: '0.01' }));
+
+      setTimeout(async () => {
+        await refreshSubBalance(sub.address);
+      }, 4000);
+
+    } catch (err) {
+      console.error('Withdraw error:', err);
+      toast.error('Withdrawal failed: ' + (err.message || 'Unknown error'), { id: toastId });
+    } finally {
+      setIsWithdrawing(prev => ({ ...prev, [sub.index]: false }));
+      setLoading(false);
+    }
+  };
+
   const setMaxWithdraw = (sub) => {
     setSubWithdrawAmounts(prev => ({
       ...prev,
@@ -294,27 +418,34 @@ const withdrawToMain = async (sub) => {
     }));
   };
 
-  const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      try {
-        const { notices } = await client.request(gql`
-          { notices(last: 5) { edges { node { payload } } } }
-        `);
-        const parsed = notices.edges
-          .map(e => {
-            try { return JSON.parse(ethers.utils.toUtf8String(e.node.payload)); }
-            catch { return null; }
-          })
-          .filter(Boolean);
-        if (parsed.some(n => n.type === 'subwallet_locked' && n.subAddress === subAddress && n.verified)) {
-          return true;
-        }
-      } catch {}
-      await new Promise(r => setTimeout(r, 2000));
-    }
-    return false;
+  const setMaxSweep = (sub) => {
+    setSubSweepAmounts(prev => ({
+      ...prev,
+      [sub.index]: sub.balance || '0'
+    }));
   };
+const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const { notices } = await client.request(gql`
+        { notices(last: 5) { edges { node { payload } } } }
+      `);
+      const parsed = notices.edges
+        .map(e => {
+          try { return JSON.parse(ethers.utils.toUtf8String(e.node.payload)); }
+          catch { return null; }
+        })
+        .filter(Boolean);
+      // Updated: Removed 'subwallet_locked' since backend now sends 'sweep_locked' for consistency
+      if (parsed.some(n => n.type === 'sweep_locked' && n.subAddress === subAddress && n.verified)) {
+        return true;
+      }
+    } catch {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  return false;
+};
 
   const pollForUnlockNotice = async (subAddress, timeoutMs = 45000) => {
     const start = Date.now();
@@ -338,25 +469,69 @@ const withdrawToMain = async (sub) => {
     return false;
   };
 
-  const isSubLocked = async (subAddress) => {
-    try {
-      const { notices } = await client.request(gql`
-        { notices(last: 20) { edges { node { payload } } } }
-      `);
-      const parsed = notices.edges
-        .map(e => {
-          try { return JSON.parse(ethers.utils.toUtf8String(e.node.payload)); }
-          catch { return null; }
-        })
-        .filter(Boolean);
-      const relevant = parsed.filter(
-        n => n.subAddress === subAddress && n.verified && ['subwallet_locked', 'subwallet_unlocked'].includes(n.type)
-      );
-      return relevant.length > 0 && relevant[0].type === 'subwallet_locked';
-    } catch {
-      return false;
+  const pollForPendingNotice = async (subAddress, timeoutMs = 45000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const { notices } = await client.request(gql`
+          { notices(last: 5) { edges { node { payload } } } }
+        `);
+        const parsed = notices.edges
+          .map(e => {
+            try { return JSON.parse(ethers.utils.toUtf8String(e.node.payload)); }
+            catch { return null; }
+          })
+          .filter(Boolean);
+        const notice = parsed.find(n => n.type === 'subwallet_pending' && n.subAddress === subAddress);
+        if (notice) return notice;
+      } catch {}
+      await new Promise(r => setTimeout(r, 2000));
     }
+    return null;
   };
+
+  const pollTxConfirmations = async (txHash, requiredConfirmations = 2) => {
+    const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+    let attempts = 0;
+    const maxAttempts = 60; // 5 mins at 5s
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
+        const data = await response.json();
+        const tx = data.data?.transaction || data.data || data;
+        if (tx.blockHeight !== undefined && tx.confirmations >= requiredConfirmations) {
+          return true;
+        }
+      } catch (err) {
+        console.error('Poll tx error:', err);
+      }
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      attempts++;
+    }
+    return false;
+  };
+
+  const isSubLocked = async (subAddress) => {
+  try {
+    const { notices } = await client.request(gql`
+      { notices(last: 20) { edges { node { payload } } } }
+    `);
+    const parsed = notices.edges
+      .map(e => {
+        try { return JSON.parse(ethers.utils.toUtf8String(e.node.payload)); }
+        catch { return null; }
+      })
+      .filter(Boolean);
+    // Updated: Removed 'subwallet_locked' since backend now sends 'sweep_locked' for consistency
+    const relevant = parsed.filter(
+      n => n.subAddress === subAddress && n.verified && ['subwallet_unlocked', 'sweep_locked'].includes(n.type)
+    );
+    // Note: Assumes notices are ordered by recency (last:20 fetches recent first); takes the most recent relevant one
+    return relevant.length > 0 && relevant[0].type === 'sweep_locked';
+  } catch {
+    return false;
+  }
+};
 
  const requestUnlock = async (sub) => {
   setIsUnlocking(prev => ({ ...prev, [sub.index]: true }));
@@ -391,9 +566,19 @@ const withdrawToMain = async (sub) => {
     try {
       const { balance } = await fetchBalanceAndNonce(subAddress, true);
       const locked = await isSubLocked(subAddress);
+      let updates = { balance: balance || '0', locked };
+
+      // Also fetch vault balance if vault address exists
+      const sub = subWallets.find(s => s.address === subAddress);
+      const vaultAddr = sub?.vaultAddress || sub?.pendingVaultAddress;
+      if (vaultAddr) {
+        const vaultBalanceData = await fetchBalanceAndNonce(vaultAddr, false);
+        updates.vaultBalance = vaultBalanceData.balance || '0';
+      }
+
       setSubWallets(prev =>
         prev.map(sub =>
-          sub.address === subAddress ? { ...sub, balance: balance || '0', locked } : sub
+          sub.address === subAddress ? { ...sub, ...updates } : sub
         )
       );
       toast.success('Balance & lock state refreshed', { duration: 2000 });
@@ -402,11 +587,89 @@ const withdrawToMain = async (sub) => {
     }
   };
 
+  const inspectVault = async (vaultAddress) => {
+    try {
+      const res = await fetch(`${INSPECT_URL}/vault/${vaultAddress.slice(2).toLowerCase()}`);
+      const data = await res.json();
+      if (data.reports?.length > 0) {
+        const payload = JSON.parse(ethers.utils.toUtf8String(data.reports[0].payload));
+        toast.success(`Vault Balances: Liquid ${payload.liquid}, wWART ${payload.wWART}, CTSI ${payload.CTSI}, ETH ${payload.eth}, USDC ${payload.usdc}`);
+      } else {
+        toast.info('Vault data not available yet');
+      }
+    } catch (err) {
+      toast.error('Failed to inspect vault');
+    }
+  };
+
   const getLockStatusText = (phase) => {
     if (phase === 'preparing') return 'Preparing proof (may take a few minutes)';
     if (phase === 'fetching')   return 'Waiting for Cartesi to index transaction';
     if (phase === 'confirming') return 'Submitting lock & waiting for confirmation';
+    if (phase === 'waiting_confirmations') return 'Waiting for deposit confirmations (1-2 blocks)';
+    if (phase === 'sweeping') return 'Sweeping funds to vault';
     return 'Securing sub-wallet...';
+  };
+
+  // Refactored VaultInfo component
+  const VaultInfo = ({ sub }) => {
+    if (!sub.pendingVaultAddress && !sub.vaultAddress) return null;
+
+    const vaultAddr = sub.pendingVaultAddress || sub.vaultAddress;
+    const displayedVaultAddr = isSmallScreen ? `${vaultAddr.slice(0, 6)}...${vaultAddr.slice(-4)}` : vaultAddr;
+
+    return (
+      <div style={{ opacity: sub.locking ? 0.5 : 1, pointerEvents: sub.locking ? 'none' : 'auto', background: 'rgba(0,0,0,0.8)', padding: '10px', borderRadius: '5px' }}>
+        <div>
+          <strong>Vault Address:</strong>{' '}
+          <span style={{ cursor: 'pointer' }} onClick={() => copyToClipboard(vaultAddr)} title="Click to copy">
+            {displayedVaultAddr}
+          </span>
+        </div>
+        <div><strong>Vault Balance:</strong> {sub.vaultBalance ?? 'Loading...'} WART</div>
+        {sub.vaultAddress && (
+          <button
+            onClick={() => inspectVault(sub.vaultAddress)}
+            disabled={loading}
+            className="btn btn-info"
+          >
+            Inspect Vault
+          </button>
+        )}
+        {sub.locked && (
+          <>
+            <button
+              onClick={() => requestUnlock(sub)}
+              disabled={loading || isUnlocking[sub.index]}
+              className="btn btn-danger small"
+            >
+              {isUnlocking[sub.index] ? 'Unlocking...' : 'Request Unlock'}
+            </button>
+            <button
+              onClick={() => {
+                setSubWallets(prev =>
+                  prev.map(s => s.index === sub.index ? { ...s, locked: false } : s)
+                );
+                toast.success('Force unlocked for testing!');
+              }}
+              disabled={loading}
+              className="btn btn-warning small"
+            >
+              Force Unlock
+            </button>
+          </>
+        )}
+        {isUnlocking[sub.index] && (
+          <div className="status-message status-unlock">
+            <div className="spinner" />
+            <span>
+              Requesting unlock & waiting for confirmation
+              <LoadingDots />
+            </span>
+          </div>
+        )}
+      </div>
+    );
   };
 
 return (
@@ -441,7 +704,9 @@ return (
     </div>
 
     <ul className="subwallet-list">
-      {subWallets.map((sub) => (
+      {subWallets.map((sub) => {
+        const displayedSubAddr = isSmallScreen ? `${sub.address.slice(0, 6)}...${sub.address.slice(-4)}` : sub.address;
+        return (
         <li
           key={sub.index}
           className={`subwallet-item ${sub.locked ? 'locked' : 'unlocked'}`}
@@ -451,7 +716,10 @@ return (
               <strong>Index:</strong> {sub.index}
             </div>
             <div>
-              <strong>Address:</strong> {sub.address}
+              <strong>Address:</strong>{' '}
+              <span style={{ cursor: 'pointer' }} onClick={() => copyToClipboard(sub.address)} title="Click to copy">
+                {displayedSubAddr}
+              </span>
             </div>
             <div>
               <strong>Balance:</strong> {sub.balance ?? '0'} WART
@@ -462,6 +730,8 @@ return (
                 {sub.locked ? 'Locked 🔒' : 'Unlocked 🔓'}
               </span>
             </div>
+
+            <VaultInfo sub={sub} />
           </div>
 
      <div className="subwallet-actions">
@@ -475,24 +745,6 @@ return (
 
   {sub.locked ? (
     <>
-      <button
-        onClick={() => requestUnlock(sub)}
-        disabled={loading || isUnlocking[sub.index]}
-        className="btn btn-danger"
-      >
-        {isUnlocking[sub.index] ? 'Unlocking...' : 'Request Unlock'}
-      </button>
-
-      {/* ← moved here: full-width status message below buttons */}
-      {isUnlocking[sub.index] && (
-        <div className="status-message status-unlock">
-          <div className="spinner" />
-          <span>
-            Requesting unlock & waiting for confirmation
-            <LoadingDots />
-          </span>
-        </div>
-      )}
     </>
             ) : (
               <>
@@ -511,10 +763,10 @@ return (
                   />
                   <button
                     onClick={() => depositToSub(sub)}
-                    disabled={isDepositing[sub.index] || loading}
+                    disabled={isDepositing[sub.index] || loading || sub.locking}
                     className="btn btn-success"
                   >
-                    {isDepositing[sub.index] ? 'Processing...' : 'Deposit & Auto-Lock'}
+                    {isDepositing[sub.index] ? 'Processing...' : sub.locking ? 'Locking...' : 'Deposit & Auto-Lock'}
                   </button>
                 </div>
 
@@ -553,6 +805,7 @@ return (
                     disabled={
                       isWithdrawing[sub.index] ||
                       loading ||
+                      sub.locking ||
                       !sub.balance ||
                       Number(sub.balance) <= 0
                     }
@@ -561,6 +814,55 @@ return (
                     {isWithdrawing[sub.index] ? 'Sending...' : 'Withdraw to Main'}
                   </button>
                 </div>
+
+                {/* Sweep */}
+                {(sub.pendingVaultAddress || sub.vaultAddress) && (
+                  <div className="action-group sweep-group">
+                    <input
+                      type="number"
+                      step="0.00000001"
+                      placeholder="Sweep amount"
+                      value={subSweepAmounts[sub.index] || ''}
+                      onChange={(e) =>
+                        setSubSweepAmounts((prev) => ({ ...prev, [sub.index]: e.target.value }))
+                      }
+                      disabled={
+                        isSweeping[sub.index] ||
+                        loading ||
+                        !sub.balance ||
+                        Number(sub.balance) <= 0 ||
+                        sub.locking
+                      }
+                      className="input amount-input"
+                    />
+                    <button
+                      onClick={() => setMaxSweep(sub)}
+                      disabled={
+                        isSweeping[sub.index] ||
+                        loading ||
+                        !sub.balance ||
+                        Number(sub.balance) <= 0 ||
+                        sub.locking
+                      }
+                      className="btn btn-info small"
+                    >
+                      Max
+                    </button>
+                    <button
+                      onClick={() => sweepToVault(sub, subSweepAmounts[sub.index])}
+                      disabled={
+                        isSweeping[sub.index] ||
+                        loading ||
+                        !sub.balance ||
+                        Number(sub.balance) <= 0 ||
+                        sub.locking
+                      }
+                      className="btn btn-warning"
+                    >
+                      {isSweeping[sub.index] ? 'Sweeping...' : 'Sweep to Vault'}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -576,6 +878,16 @@ return (
             </div>
           )}
 
+          {sub.locking && (
+            <div className="status-message status-locking">
+              <div className="spinner" />
+              <span>
+                Locking in progress — monitoring for confirmations
+                <LoadingDots />
+              </span>
+            </div>
+          )}
+
           {isWithdrawing[sub.index] && (
             <div className="status-message status-withdraw">
               <div className="spinner" />
@@ -585,8 +897,18 @@ return (
               </span>
             </div>
           )}
+
+          {isSweeping[sub.index] && (
+            <div className="status-message status-sweep">
+              <div className="spinner" />
+              <span>
+                Sweeping to vault and locking
+                <LoadingDots />
+              </span>
+            </div>
+          )}
         </li>
-      ))}
+      )})}
     </ul>
 
     {subError && <div className="error-message">{subError}</div>}
