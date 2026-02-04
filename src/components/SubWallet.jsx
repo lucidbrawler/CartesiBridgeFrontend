@@ -43,6 +43,9 @@ function SubWallet({
   // Regenerate state
   const [regenIndex, setRegenIndex] = useState('');
 
+  // Vault checked state
+  const [checkedVault, setCheckedVault] = useState({});
+
   // Active deposit tx monitoring (for enabling manual sweep after confirmation)
   const [activeDepositTxs, setActiveDepositTxs] = useState({}); // { subIndex: txHash }
 
@@ -511,6 +514,31 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
     return false;
   };
 
+  const getVaultAddressForSub = async (subAddress) => {
+    try {
+      const { notices } = await client.request(gql`
+        { notices(last: 20) { edges { node { payload } } } }
+      `);
+      const parsed = notices.edges
+        .map(e => {
+          try { return JSON.parse(ethers.utils.toUtf8String(e.node.payload)); }
+          catch { return null; }
+        })
+        .filter(Boolean);
+      const relevant = parsed.filter(
+        n => n.subAddress === subAddress && ['subwallet_pending', 'sweep_locked', 'subwallet_unlocked'].includes(n.type)
+      );
+      if (relevant.length > 0) {
+        // Take the most recent one (assuming last:20 is recent first)
+        const latest = relevant[0];
+        return latest.vaultAddress;
+      }
+    } catch (err) {
+      console.error('getVaultAddressForSub error:', err);
+    }
+    return null;
+  };
+
   const isSubLocked = async (subAddress) => {
   try {
     const { notices } = await client.request(gql`
@@ -568,10 +596,11 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
       const locked = await isSubLocked(subAddress);
       let updates = { balance: balance || '0', locked };
 
-      // Also fetch vault balance if vault address exists
-      const sub = subWallets.find(s => s.address === subAddress);
-      const vaultAddr = sub?.vaultAddress || sub?.pendingVaultAddress;
+      // Fetch vault address if any exists
+      const vaultAddr = await getVaultAddressForSub(subAddress);
       if (vaultAddr) {
+        updates.vaultAddress = vaultAddr;
+        // Fetch vault balance
         const vaultBalanceData = await fetchBalanceAndNonce(vaultAddr, false);
         updates.vaultBalance = vaultBalanceData.balance || '0';
       }
@@ -595,7 +624,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
         const payload = JSON.parse(ethers.utils.toUtf8String(data.reports[0].payload));
         toast.success(`Vault Balances: Liquid ${payload.liquid}, wWART ${payload.wWART}, CTSI ${payload.CTSI}, ETH ${payload.eth}, USDC ${payload.usdc}`);
       } else {
-        toast.info('Vault data not available yet');
+        toast('Vault data not available yet');
       }
     } catch (err) {
       toast.error('Failed to inspect vault');
@@ -718,13 +747,48 @@ return (
           className={`subwallet-item ${sub.locked ? 'locked' : 'unlocked'}`}
           style={{ textAlign: 'left' }}
         >
-          <button
-            onClick={() => refreshSubBalance(sub.address)}
-            disabled={loading || isUnlocking[sub.index]}
-            className="btn primary small"
-          >
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <button
+              onClick={() => refreshSubBalance(sub.address)}
+              disabled={loading || isUnlocking[sub.index]}
+              className="btn primary small"
+            >
+              Refresh
+            </button>
+            <button
+              onClick={async () => {
+                const hasChecked = checkedVault[sub.index];
+                if (sub.vaultAddress) {
+                  // Hide vault
+                  setSubWallets(prev => prev.map(s => s.address === sub.address ? { ...s, vaultAddress: null, vaultBalance: null } : s));
+                  setCheckedVault(prev => ({ ...prev, [sub.index]: false }));
+                  toast('Vault hidden');
+                } else if (hasChecked) {
+                  // Generate vault
+                  toast('Deposit funds to this subwallet to create a vault');
+                } else {
+                  // Show vault
+                  const vaultAddr = await getVaultAddressForSub(sub.address);
+                  setCheckedVault(prev => ({ ...prev, [sub.index]: true }));
+                  if (vaultAddr) {
+                    setSubWallets(prev => prev.map(s => s.address === sub.address ? { ...s, vaultAddress: vaultAddr } : s));
+                    const vaultBalanceData = await fetchBalanceAndNonce(vaultAddr, false);
+                    setSubWallets(prev => prev.map(s => s.address === sub.address ? { ...s, vaultBalance: vaultBalanceData.balance || '0' } : s));
+                    toast.success('Vault loaded');
+                  } else {
+                    toast('No vault found. Deposit to create one.');
+                  }
+                }
+              }}
+              disabled={loading}
+              className="btn primary small"
+            >
+              {(() => {
+                const hasChecked = checkedVault[sub.index];
+                return sub.vaultAddress ? 'Hide Vault' : hasChecked ? 'Generate Vault' : 'Show Vault';
+              })()}
+            </button>
+          </div>
           <div className="subwallet-info">
             <div>
               <strong>Index:</strong> {sub.index}
