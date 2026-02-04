@@ -619,7 +619,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
     const displayedVaultAddr = isSmallScreen ? `${vaultAddr.slice(0, 6)}...${vaultAddr.slice(-4)}` : vaultAddr;
 
     return (
-      <div style={{ opacity: sub.locking ? 0.5 : 1, pointerEvents: sub.locking ? 'none' : 'auto', background: 'rgba(0,0,0,0.8)', padding: '10px', borderRadius: '5px' }}>
+      <div style={{ opacity: sub.locking ? 0.5 : 1, pointerEvents: sub.locking ? 'none' : 'auto', background: 'rgba(0,0,0,0.8)', padding: '10px', borderRadius: '5px', textAlign: 'center' }}>
         <div>
           <strong>Vault Address:</strong>{' '}
           <span style={{ cursor: 'pointer' }} onClick={() => copyToClipboard(vaultAddr)} title="Click to copy">
@@ -627,11 +627,17 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
           </span>
         </div>
         <div><strong>Vault Balance:</strong> {sub.vaultBalance ?? 'Loading...'} WART</div>
+        <div>
+          <strong>Status:</strong>{' '}
+          <span className={sub.locked ? 'status-locked' : 'status-unlocked'}>
+            {sub.locked ? 'Locked 🔒' : 'Unlocked 🔓'}
+          </span>
+        </div>
         {sub.vaultAddress && (
           <button
             onClick={() => inspectVault(sub.vaultAddress)}
             disabled={loading}
-            className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
+            className="btn primary small"
           >
             Inspect Vault
           </button>
@@ -641,7 +647,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
             <button
               onClick={() => requestUnlock(sub)}
               disabled={loading || isUnlocking[sub.index]}
-              className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
+              className="btn danger small"
             >
               {isUnlocking[sub.index] ? 'Unlocking...' : 'Request Unlock'}
             </button>
@@ -653,7 +659,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
                 toast.success('Force unlocked for testing!');
               }}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
+              className="btn danger small"
             >
               Force Unlock
             </button>
@@ -680,7 +686,7 @@ return (
       <button
         onClick={generateLockedSubWallet}
         disabled={loading}
-        className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
+        className="btn primary small"
       >
         + Generate New Sub-Wallet
       </button>
@@ -696,7 +702,7 @@ return (
         <button
           onClick={regenerateSubWallet}
           disabled={loading || !regenIndex}
-          className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
+          className="btn primary small"
         >
           Regenerate
         </button>
@@ -710,7 +716,15 @@ return (
         <li
           key={sub.index}
           className={`subwallet-item ${sub.locked ? 'locked' : 'unlocked'}`}
+          style={{ textAlign: 'left' }}
         >
+          <button
+            onClick={() => refreshSubBalance(sub.address)}
+            disabled={loading || isUnlocking[sub.index]}
+            className="btn primary small"
+          >
+            Refresh
+          </button>
           <div className="subwallet-info">
             <div>
               <strong>Index:</strong> {sub.index}
@@ -724,147 +738,127 @@ return (
             <div>
               <strong>Balance:</strong> {sub.balance ?? '0'} WART
             </div>
-            <div>
-              <strong>Status:</strong>{' '}
-              <span className={sub.locked ? 'status-locked' : 'status-unlocked'}>
-                {sub.locked ? 'Locked 🔒' : 'Unlocked 🔓'}
-              </span>
-            </div>
 
             <VaultInfo sub={sub} />
           </div>
 
      <div className="subwallet-actions">
-  <button
-    onClick={() => refreshSubBalance(sub.address)}
-    disabled={loading || isUnlocking[sub.index]}
-    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-  >
-    Refresh
-  </button>
 
-  {sub.locked ? (
-    <>
-    </>
-            ) : (
-              <>
-                {/* Deposit */}
-                <div className="action-group deposit-group">
-                  <input
-                    type="number"
-                    step="0.00000001"
-                    placeholder="Deposit amount"
-                    value={subDeposits[sub.index] || ''}
-                    onChange={(e) =>
-                      setSubDeposits((prev) => ({ ...prev, [sub.index]: e.target.value }))
-                    }
-                    disabled={isDepositing[sub.index] || loading}
-                    className="input amount-input"
-                  />
-                  <button
-                    onClick={() => depositToSub(sub)}
-                    disabled={isDepositing[sub.index] || loading || sub.locking}
-                    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-                  >
-                    {isDepositing[sub.index] ? 'Processing...' : sub.locking ? 'Locking...' : 'Deposit & Auto-Lock'}
-                  </button>
-                </div>
+  {/* Deposit */}
+  <div className="action-group deposit-group">
+    <input
+      type="number"
+      step="0.00000001"
+      placeholder="Deposit amount"
+      value={subDeposits[sub.index] || ''}
+      onChange={(e) =>
+        setSubDeposits((prev) => ({ ...prev, [sub.index]: e.target.value }))
+      }
+      disabled={isDepositing[sub.index] || loading}
+      className="input amount-input"
+    />
+    <button
+      onClick={() => depositToSub(sub)}
+      disabled={isDepositing[sub.index] || loading || sub.locking}
+      className="btn primary small"
+    >
+      {isDepositing[sub.index] ? 'Processing...' : sub.locking ? 'Locking...' : 'Deposit'}
+    </button>
+  </div>
 
-                {/* Withdraw */}
-                <div className="action-group withdraw-group">
-                  <input
-                    type="number"
-                    step="0.00000001"
-                    placeholder="Withdraw amount"
-                    value={subWithdrawAmounts[sub.index] || ''}
-                    onChange={(e) =>
-                      setSubWithdrawAmounts((prev) => ({ ...prev, [sub.index]: e.target.value }))
-                    }
-                    disabled={
-                      isWithdrawing[sub.index] ||
-                      loading ||
-                      !sub.balance ||
-                      Number(sub.balance) <= 0
-                    }
-                    className="input amount-input"
-                  />
-                  <button
-                    onClick={() => setMaxWithdraw(sub)}
-                    disabled={
-                      isWithdrawing[sub.index] ||
-                      loading ||
-                      !sub.balance ||
-                      Number(sub.balance) <= 0
-                    }
-                    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-                  >
-                    Max
-                  </button>
-                  <button
-                    onClick={() => withdrawToMain(sub)}
-                    disabled={
-                      isWithdrawing[sub.index] ||
-                      loading ||
-                      sub.locking ||
-                      !sub.balance ||
-                      Number(sub.balance) <= 0
-                    }
-                    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-                  >
-                    {isWithdrawing[sub.index] ? 'Sending...' : 'Withdraw to Main'}
-                  </button>
-                </div>
+  {/* Withdraw */}
+  <div className="action-group withdraw-group">
+    <input
+      type="number"
+      step="0.00000001"
+      placeholder="Withdraw amount"
+      value={subWithdrawAmounts[sub.index] || ''}
+      onChange={(e) =>
+        setSubWithdrawAmounts((prev) => ({ ...prev, [sub.index]: e.target.value }))
+      }
+      disabled={
+        isWithdrawing[sub.index] ||
+        loading ||
+        !sub.balance ||
+        Number(sub.balance) <= 0
+      }
+      className="input amount-input"
+    />
+    <button
+      onClick={() => setMaxWithdraw(sub)}
+      disabled={
+        isWithdrawing[sub.index] ||
+        loading ||
+        !sub.balance ||
+        Number(sub.balance) <= 0
+      }
+      className="btn primary small"
+    >
+      Max
+    </button>
+    <button
+      onClick={() => withdrawToMain(sub)}
+      disabled={
+        isWithdrawing[sub.index] ||
+        loading ||
+        sub.locking ||
+        !sub.balance ||
+        Number(sub.balance) <= 0
+      }
+      className="btn primary small"
+    >
+      {isWithdrawing[sub.index] ? 'Sending...' : 'Withdraw to Main'}
+    </button>
+  </div>
 
-                {/* Sweep */}
-                {(sub.pendingVaultAddress || sub.vaultAddress) && (
-                  <div className="action-group sweep-group">
-                    <input
-                      type="number"
-                      step="0.00000001"
-                      placeholder="Sweep amount"
-                      value={subSweepAmounts[sub.index] || ''}
-                      onChange={(e) =>
-                        setSubSweepAmounts((prev) => ({ ...prev, [sub.index]: e.target.value }))
-                      }
-                      disabled={
-                        isSweeping[sub.index] ||
-                        loading ||
-                        !sub.balance ||
-                        Number(sub.balance) <= 0 ||
-                        sub.locking
-                      }
-                      className="input amount-input"
-                    />
-                    <button
-                      onClick={() => setMaxSweep(sub)}
-                      disabled={
-                        isSweeping[sub.index] ||
-                        loading ||
-                        !sub.balance ||
-                        Number(sub.balance) <= 0 ||
-                        sub.locking
-                      }
-                      className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-                    >
-                      Max
-                    </button>
-                    <button
-                      onClick={() => sweepToVault(sub, subSweepAmounts[sub.index])}
-                      disabled={
-                        isSweeping[sub.index] ||
-                        loading ||
-                        !sub.balance ||
-                        Number(sub.balance) <= 0 ||
-                        sub.locking
-                      }
-                      className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-                    >
-                      {isSweeping[sub.index] ? 'Sweeping...' : 'Sweep to Vault'}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+  {/* Sweep */}
+  {(sub.pendingVaultAddress || sub.vaultAddress) && (
+    <div className="action-group sweep-group">
+      <input
+        type="number"
+        step="0.00000001"
+        placeholder="Sweep amount"
+        value={subSweepAmounts[sub.index] || ''}
+        onChange={(e) =>
+          setSubSweepAmounts((prev) => ({ ...prev, [sub.index]: e.target.value }))
+        }
+        disabled={
+          isSweeping[sub.index] ||
+          loading ||
+          !sub.balance ||
+          Number(sub.balance) <= 0 ||
+          sub.locking
+        }
+        className="input amount-input"
+      />
+      <button
+        onClick={() => setMaxSweep(sub)}
+        disabled={
+          isSweeping[sub.index] ||
+          loading ||
+          !sub.balance ||
+          Number(sub.balance) <= 0 ||
+          sub.locking
+        }
+        className="btn primary small"
+      >
+        Max
+      </button>
+      <button
+        onClick={() => sweepToVault(sub, subSweepAmounts[sub.index])}
+        disabled={
+          isSweeping[sub.index] ||
+          loading ||
+          !sub.balance ||
+          Number(sub.balance) <= 0 ||
+          sub.locking
+        }
+        className="btn primary small"
+      >
+        {isSweeping[sub.index] ? 'Sweeping...' : 'Sweep to Vault and Lock'}
+      </button>
+    </div>
+  )}
           </div>
 
           {/* Status feedback messages */}

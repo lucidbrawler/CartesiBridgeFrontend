@@ -5,8 +5,6 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import viteCommonjs from 'vite-plugin-commonjs';
 import netlify from '@astrojs/netlify';
 
-import tailwindcss from '@tailwindcss/vite';
-
 export default defineConfig({
   output: 'server',
   integrations: [react()],
@@ -21,19 +19,16 @@ export default defineConfig({
         stream: 'stream-browserify',
       },
     },
-
     ssr: {
       noExternal: ['crypto-browserify', 'stream-browserify'],
     },
-
-    optimizeDeps: {
-   esbuildOptions: {
-     define: {
-       global: 'globalThis',
-     },
-   },
- },
-
+       optimizeDeps: {
+      esbuildOptions: {
+        define: {
+          global: 'globalThis',
+        },
+      },
+    },
     server: {
       proxy: {
         '/rollup': {
@@ -44,13 +39,10 @@ export default defineConfig({
         
       },
     },
-
     build: {
       commonjsOptions: {
         transformMixedEsModules: true
       }
-    },
-
-    plugins: [tailwindcss()],
+    }
   },
 });

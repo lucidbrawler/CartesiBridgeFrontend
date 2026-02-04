@@ -368,21 +368,7 @@ export default function WalletIsland() {
   </div>
         </div>
 
-        <div className="actions">
-          <button onClick={() => send({ type: "mint_liquid" })} className="btn primary" disabled={loading}>
-            <Zap className="inline mr-3" size={26} /> Mint LIQUID
-          </button>
-          <input
-            type="number"
-            placeholder="Amount to burn"
-            value={burnAmt}
-            onChange={(e) => setBurnAmt(e.target.value)}
-            className="burn-input"
-          />
-          <button onClick={() => burnAmt && send({ type: "burn_liquid", amount: burnAmt })} className="btn danger" disabled={!burnAmt || loading}>
-            <ArrowDown className="inline mr-3" size={26} /> Burn & Redeem
-          </button>
-        </div>
+
 
         <div className="refresh-btn-container">
           <button onClick={() => refreshVault(address)} className="btn small" disabled={loading}>
@@ -519,12 +505,14 @@ export default function WalletIsland() {
       </div>
 
       {showWarthog && (
-        <WarthogWallet 
+        <WarthogWallet
           send={send} // Pass the send function for relaying proofs
           address={address} // Pass L1 address for relay
           l1Address={address} // NEW: Explicitly pass L1 address
           loading={loading}
           setLoading={setLoading}
+          burnAmt={burnAmt}
+          setBurnAmt={setBurnAmt}
         />
       )}
     </div>

@@ -43,50 +43,88 @@
 .btn {
   padding: 0.6rem 1.2rem;
   border: none;
-  border-radius: 6px;
+  border-radius: 50px;
   cursor: pointer;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.3s;
+  font-size: 1.2rem;
+  color: black;
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .btn-primary {
-  background: #6b7280;
-  color: white;
+  background: linear-gradient(135deg, #00ffcc, #00b399);
+  box-shadow: 0 0 20px #00ffcc44;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 10px 30px #00ffcc66;
 }
 
 .btn-secondary {
-  background: #10b981;
-  color: white;
+  background: linear-gradient(135deg, #80e6ff, #4dd0e1);
+  box-shadow: 0 0 20px #80e6ff44;
+}
+
+.btn-secondary:hover {
+  box-shadow: 0 10px 30px #80e6ff66;
 }
 
 .btn-success {
-  background: #10b981;
-  color: white;
+  background: linear-gradient(135deg, #66ff99, #4dd0a1);
+  box-shadow: 0 0 20px #66ff9944;
+}
+
+.btn-success:hover {
+  box-shadow: 0 10px 30px #66ff9966;
 }
 
 .btn-danger {
-  background: #ef4444;
-  color: white;
+  background: linear-gradient(135deg, #ffcc00, #ff9900);
+  box-shadow: 0 0 20px #ffcc0044;
+}
+
+.btn-danger:hover {
+  box-shadow: 0 10px 30px #ffcc0066;
 }
 
 .btn-info {
-  background: #6366f1;
-  color: white;
+  background: linear-gradient(135deg, #b3e6ff, #80d4ff);
+  box-shadow: 0 0 20px #b3e6ff44;
+}
+
+.btn-info:hover {
+  box-shadow: 0 10px 30px #b3e6ff66;
 }
 
 .btn-outline {
-  background: #374151;
+  background: linear-gradient(135deg, #666, #555);
+  box-shadow: 0 0 20px #6666;
   color: white;
 }
 
+.btn-outline:hover {
+  box-shadow: 0 10px 30px #666a;
+  color: white;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #ffff66, #ffdd44);
+  box-shadow: 0 0 20px #ffff6644;
+}
+
+.btn-warning:hover {
+  box-shadow: 0 10px 30px #ffff6666;
+}
+
 .btn.small {
-  padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
 }
 
 .input {

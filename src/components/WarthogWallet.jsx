@@ -1,15 +1,21 @@
+// src/components/WarthogWallet.jsx
 import React, { useState, useEffect } from 'react';
 import CryptoJS from 'crypto-js';
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { ethers as ethersV6 } from 'ethers-v6';
 import TransactionHistory from './TransactionHistory';
-import SubWallet from './SubWallet';
+import SubWallet from './SubWallet'; // New import for sub-wallet component
+import '../styles/warthog.css';
+
 const API_URL = '/api/proxy';
+
 const defaultNodeList = [
   'http://217.182.64.43:3001',
+  'http://65.87.7.86:3001',
   'https://warthognode.duckdns.org',
-  ];
-const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoading, setLoading: propSetLoading }) => {
+];
+
+const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoading, setLoading: propSetLoading, burnAmt, setBurnAmt }) => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [walletData, setWalletData] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -18,12 +24,12 @@ const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoa
   const [sendResult, setSendResult] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [balance, setBalance] = useState(null);
-  const [nextNonce, setNextNonce] = useState(null); // Renamed from nonceId for clarity
+  const [nextNonce, setNextNonce] = useState(null); // Renamed for clarity, like wallet.jsx
   const [pinHeight, setPinHeight] = useState(null);
   const [pinHash, setPinHash] = useState(null);
   const [mnemonic, setMnemonic] = useState('');
   const [privateKeyInput, setPrivateKeyInput] = useState('');
-  const [address, setAddress] = useState('');
+  const [validateAddr, setValidateAddr] = useState('');
   const [toAddr, setToAddr] = useState('');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('');
@@ -43,32 +49,12 @@ const WarthogWallet = ({ send, address: propAddress, l1Address, loading: propLoa
   const [sending, setSending] = useState(false); // New: to disable button during send
   const [failedTransactions, setFailedTransactions] = useState([]); // New: to log failed transactions
   const [sentTransactions, setSentTransactions] = useState([]);
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showUnlockPassword, setShowUnlockPassword] = useState(false);
-  const [showDownloadPassword, setShowDownloadPassword] = useState(false);
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [copiedTxId, setCopiedTxId] = useState(null); // New: to track copied Tx ID for feedback
   const [copiedToAddr, setCopiedToAddr] = useState(null); // New: to track copied To Address for feedback
   const [copiedFromAddr, setCopiedFromAddr] = useState(null); // New: to track copied From Address for feedback
-  const [downloadPassword, setDownloadPassword] = useState('');
-  const [confirmDownloadPassword, setConfirmDownloadPassword] = useState('');
-  const [showConfirmDownloadPassword, setShowConfirmDownloadPassword] = useState(false);
-const [isSmallScreen767, setIsSmallScreen767] = useState(false);
-const [blockCounts, setBlockCounts] = useState({ '24h': 0, week: 0, month: 0, rewards24h: [], rewardsWeek: [], rewardsMonth: [] });
-const [showTooltip24h, setShowTooltip24h] = useState(false);
-const [showTooltipWeek, setShowTooltipWeek] = useState(false);
-const [showTooltipMonth, setShowTooltipMonth] = useState(false);
-const [scrollToTxid, setScrollToTxid] = useState(null);
-const [timeoutId24h, setTimeoutId24h] = useState(null);
-const [timeoutIdWeek, setTimeoutIdWeek] = useState(null);
-const [timeoutIdMonth, setTimeoutIdMonth] = useState(null);
-const [refreshHistory, setRefreshHistory] = useState(false);
-  const [isPollingHistory, setIsPollingHistory] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [registration, setRegistration] = useState(null);
-  const [usdBalance, setUsdBalance] = useState(null);
+  const [isSmallScreen767, setIsSmallScreen767] = useState(false);
+  const [isPollingTx, setIsPollingTx] = useState(false);
+  const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
   // Sub-wallet states
   const [subWallets, setSubWallets] = useState(() => {
     const saved = localStorage.getItem('warthogSubWallets');
@@ -84,125 +70,86 @@ const [refreshHistory, setRefreshHistory] = useState(false);
     }
   });
   const [subIndex, setSubIndex] = useState(0);
-  // Load selectedNode from localStorage on mount
+  const [subDepositAmt, setSubDepositAmt] = useState('');
+  const [selectedSub, setSelectedSub] = useState(null);
+  const [voucherPayload, setVoucherPayload] = useState('');
+
   useEffect(() => {
-    const savedNode = localStorage.getItem('selectedNode');
-    if (savedNode && defaultNodeList.includes(savedNode)) {
-      setSelectedNode(savedNode);
-    }
+    localStorage.removeItem('warthogSubWallets');
   }, []);
-const abbreviate = (str) => str ? `${str.slice(0,6)}...${str.slice(-4)}` : 'N/A';
-useEffect(() => {
-  const handleResize = () => {
-    setIsSmallScreen767(window.innerWidth < 767);
-  };
-  handleResize(); // Set initial value on mount
-  window.addEventListener('resize', handleResize);
-  return () => window.removeEventListener('resize', handleResize);
-}, []);
-useEffect(() => {
-  const handleBeforeInstallPrompt = (e) => {
-    e.preventDefault();
-    setDeferredPrompt(e);
-  };
-  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  return () => {
-    window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  };
-}, []);
-// Handle app installed event
-useEffect(() => {
-  const handleAppInstalled = () => {
-    setDeferredPrompt(null);
-  };
-  window.addEventListener('appinstalled', handleAppInstalled);
-  return () => {
-    window.removeEventListener('appinstalled', handleAppInstalled);
-  };
-}, []);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  // Handle app installed event
+  useEffect(() => {
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
   useEffect(() => {
     const encryptedWallet = localStorage.getItem('warthogWallet');
     if (encryptedWallet) {
       setShowPasswordPrompt(true);
     }
   }, []);
+
   useEffect(() => {
     if (wallet?.address) {
       console.log('Fetching balance for address:', wallet.address);
       fetchBalanceAndNonce(wallet.address);
-      // Poll for balance update every 30 seconds
-      const balanceInterval = setInterval(() => fetchBalanceAndNonce(wallet.address), 30000);
-      return () => clearInterval(balanceInterval);
     }
   }, [wallet, selectedNode]);
-  // Poll for transaction history update every 30 seconds
-  useEffect(() => {
-    if (wallet?.address) {
-      const historyInterval = setInterval(() => {
-        // Trigger history refresh by resetting or refetching (via TransactionHistory component)
-        // For simplicity, we'll add a refresh trigger
-        setIsPollingHistory(true);
-        setRefreshHistory(prev => !prev);
-        setTimeout(() => setIsPollingHistory(false), 2000);
-      }, 30000);
-      return () => clearInterval(historyInterval);
-    }
-  }, [wallet, selectedNode]);
+
   useEffect(() => {
     if (showModal) {
       window.alert("If you haven't backed up the information elsewhere, do not close the next window without saving or downloading your private key.");
     }
   }, [showModal]);
-// Poll for pending tx status every 30 seconds if there are pending txs
-useEffect(() => {
-  if (sentTransactions.length > 0 && wallet?.address) {
-    const interval = setInterval(() => {
-      updateTxStatuses();
-    }, 30000); // 30 seconds
-    return () => clearInterval(interval);
-  }
-}, [sentTransactions, wallet, selectedNode]);
-useEffect(() => {
-  const handleResize = () => {
-    setIsSmallScreen767(window.innerWidth < 767);
-  };
-  window.addEventListener('resize', handleResize);
-  return () => window.removeEventListener('resize', handleResize);
-}, []);
-// Add effect to persist subWallets
-useEffect(() => {
-  localStorage.setItem('warthogSubWallets', JSON.stringify(subWallets));
-}, [subWallets]);
-// PWA Update Logic
-useEffect(() => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
-      setRegistration(reg);
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              setUpdateAvailable(true);
-            }
-          });
-        }
-      });
-    }).catch((error) => {
-      console.error('Service Worker registration failed:', error);
-    });
-  }
-}, []);
-const handleUpdate = () => {
-  if (registration && registration.waiting) {
-    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    registration.waiting.addEventListener('statechange', (e) => {
-      if (e.target.state === 'activated') {
-        window.location.reload();
-      }
-    });
-  }
-};
+
+  // Poll for pending tx status every 30 seconds if there are pending txs
+  useEffect(() => {
+    if (sentTransactions.length > 0 && wallet?.address) {
+      const interval = setInterval(() => {
+        updateTxStatuses();
+      }, 30000); // 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [sentTransactions, wallet, selectedNode]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen767(window.innerWidth < 767);
+    };
+
+    handleResize(); // Set initial value on mount
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Add effect to persist subWallets (optional but recommended)
+  useEffect(() => {
+    localStorage.setItem('warthogSubWallets', JSON.stringify(subWallets));
+  }, [subWallets]);
+
   const wartToE8 = (wart) => {
     try {
       const num = parseFloat(wart);
@@ -212,17 +159,30 @@ const handleUpdate = () => {
       return null;
     }
   };
-  const fetchBalanceAndNonce = async (address) => {
+
+  const fetchBalanceAndNonce = async (address, isForSub = false) => {
     setError(null);
+    if (!isForSub) {
+      setIsRefreshingBalance(true);
+      setBalance(null);
+      setNextNonce(null);
+    }
+    setPinHeight(null);
+    setPinHash(null);
+
     try {
       const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
       console.log('Sending chain head request to:', `${API_URL}?nodePath=chain/head&${nodeBaseParam}`);
       const chainHeadResponse = await axios.get(`${API_URL}?nodePath=chain/head&${nodeBaseParam}`, {
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+        headers: { 'Content-Type': 'application/json' },
       });
       console.log('Chain head response status:', chainHeadResponse.status);
       const chainHeadData = chainHeadResponse.data.data || chainHeadResponse.data;
       console.log('Chain head response data:', chainHeadData);
+
+      setPinHeight(chainHeadData.pinHeight);
+      setPinHash(chainHeadData.pinHash);
+
       console.log('Sending balance request to:', `${API_URL}?nodePath=account/${address}/balance&${nodeBaseParam}`);
       const balanceResponse = await axios.get(`${API_URL}?nodePath=account/${address}/balance&${nodeBaseParam}`, {
         headers: { 'Content-Type': 'application/json' },
@@ -230,31 +190,23 @@ const handleUpdate = () => {
       console.log('Balance response status:', balanceResponse.status);
       const balanceData = balanceResponse.data.data || balanceResponse.data;
       console.log('Balance response data:', balanceData);
+
+      const balanceInWart = balanceData.balanceE8 !== undefined ? (balanceData.balanceE8 / 100000000).toFixed(8) : '0';
+
       const fetchedNonce = Number(balanceData.nonceId) || 0;
       const newNextNonce = Math.max(nextNonce || 0, fetchedNonce + 1);
-      const balanceInWart = balanceData.balance !== undefined ? (balanceData.balance / 1).toFixed(8) : '0';
-      setBalance(balanceInWart);
-      // Fetch USD equivalent
-      if (balanceInWart && balanceInWart !== '0.00000000') {
-        fetch('https://api.coingecko.com/api/v3/simple/price?ids=warthog&vs_currencies=usd')
-          .then(res => res.json())
-          .then(data => {
-            const price = data.warthog?.usd || 0;
-            const usd = (parseFloat(balanceInWart) * price).toFixed(2);
-            setUsdBalance(`$${usd}`);
-          })
-          .catch(() => setUsdBalance('N/A'));
-      } else {
-        setUsdBalance('$0.00');
+
+      if (!isForSub) {
+        setBalance(balanceInWart);
+        setNextNonce(newNextNonce);
+        if (wallet?.address) {
+          localStorage.setItem(`warthogNextNonce_${wallet.address}`, newNextNonce);
+        }
       }
-      setNextNonce(newNextNonce);
-      setPinHeight(chainHeadData.pinHeight);
-      setPinHash(chainHeadData.pinHash);
-      if (wallet?.address) {
-        localStorage.setItem(`warthogNextNonce_${wallet.address}`, newNextNonce);
-      }
+
       console.log('Chain head data:', chainHeadData);
-      return { balanceInWart, nextNonce: newNextNonce, pinHeight: chainHeadData.pinHeight, pinHash: chainHeadData.pinHash };
+      if (!isForSub) setIsRefreshingBalance(false);
+      return { balance: balanceInWart, nextNonce: newNextNonce, pinHeight: chainHeadData.pinHeight, pinHash: chainHeadData.pinHash };
     } catch (err) {
       const errorMessage =
         err.response?.data?.message ||
@@ -262,40 +214,43 @@ const handleUpdate = () => {
         'Could not fetch chain head or balance';
       setError(errorMessage);
       console.error('Fetch error:', err);
+      if (!isForSub) setIsRefreshingBalance(false);
+      return { balance: '0', nextNonce: 0, pinHeight: null, pinHash: null };
     }
   };
-const updateTxStatuses = async () => {
-  const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
-  const updatedTxs = await Promise.all(
-    sentTransactions.map(async (tx) => {
-      if (tx.status === 'confirmed') return tx;
-      try {
-        const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${tx.txHash}&${nodeBaseParam}`);
-        const data = response.data.data?.transaction || response.data.data || response.data;
-        if (data.blockHeight !== undefined && data.confirmations > 0) {
-          return { ...tx, status: 'confirmed', confirmations: data.confirmations };
-        }
-        return tx;
-      } catch {
-        return tx;
-      }
-    })
-  );
-  // Check if any tx status changed to confirmed
-  const hadConfirmation = updatedTxs.some((tx, idx) => tx.status === 'confirmed' && sentTransactions[idx].status !== 'confirmed');
-  setSentTransactions(updatedTxs);
-  if (hadConfirmation) {
-    // Trigger balance and history refresh
-    fetchBalanceAndNonce(wallet.address);
-    setRefreshHistory(prev => !prev);
-  }
-};
+
+  const updateTxStatuses = async () => {
+    setIsPollingTx(true);
+    try {
+      const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+      const updatedTxs = await Promise.all(
+        sentTransactions.map(async (tx) => {
+          if (tx.status === 'confirmed') return tx;
+          try {
+            const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${tx.txHash}&${nodeBaseParam}`);
+            const data = response.data.data?.transaction || response.data.data || response.data;
+            if (data.blockHeight !== undefined && data.confirmations > 0) {
+              return { ...tx, status: 'confirmed', confirmations: data.confirmations };
+            }
+            return tx;
+          } catch {
+            return tx;
+          }
+        })
+      );
+      setSentTransactions(updatedTxs);
+    } finally {
+      setIsPollingTx(false);
+    }
+  };
+
   const encryptWallet = (walletData, password) => {
     const { privateKey, publicKey, address } = walletData;
     const walletToSave = { privateKey, publicKey, address };
     const encrypted = CryptoJS.AES.encrypt(JSON.stringify(walletToSave), password).toString();
     return encrypted;
   };
+
   const decryptWallet = (encrypted, password) => {
     try {
       const bytes = CryptoJS.AES.decrypt(encrypted, password);
@@ -306,6 +261,7 @@ const updateTxStatuses = async () => {
       throw new Error('Failed to decrypt wallet: Invalid password');
     }
   };
+
   const saveWallet = (walletData) => {
     if (!saveWalletConsent || !password) {
       setError('Please provide a password and consent to save the wallet');
@@ -327,12 +283,13 @@ const updateTxStatuses = async () => {
       return false;
     }
   };
-  const downloadWallet = (walletData, pwd) => {
-    if (!pwd) {
+
+  const downloadWallet = (walletData) => {
+    if (!password) {
       setError('Please provide a password to encrypt the wallet file');
       return;
     }
-    const encrypted = encryptWallet(walletData, pwd);
+    const encrypted = encryptWallet(walletData, password);
     const blob = new Blob([encrypted], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -341,11 +298,10 @@ const updateTxStatuses = async () => {
     a.click();
     URL.revokeObjectURL(url);
     setIsWalletProcessed(true);
-    setDownloadPassword('');
-    setConfirmDownloadPassword('');
-    setShowDownloadPassword(false);
-    setShowConfirmDownloadPassword(false);
+    setPassword('');
+    setSaveWalletConsent(false);
   };
+
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) {
@@ -359,6 +315,7 @@ const updateTxStatuses = async () => {
     reader.onerror = () => setError('Failed to read file');
     reader.readAsText(file);
   };
+
   const loadWallet = () => {
     if (!password) {
       setError('Please provide a password');
@@ -387,6 +344,7 @@ const updateTxStatuses = async () => {
       setError(err.message);
     }
   };
+
   const clearWallet = () => {
     localStorage.removeItem('warthogWallet');
     if (wallet?.address) {
@@ -399,7 +357,6 @@ const updateTxStatuses = async () => {
     setPinHash(null);
     setError(null);
     setPassword('');
-    setConfirmPassword('');
     setSaveWalletConsent(false);
     setUploadedFile(null);
     setIsWalletProcessed(false);
@@ -407,68 +364,60 @@ const updateTxStatuses = async () => {
     setFailedTransactions([]); // Clear failed logs on wallet clear
     setSentTransactions([]); // Clear sent logs on wallet clear
     setNonceInput('');
-    setMnemonic('');
-    setPrivateKeyInput('');
-    setAddress('');
-    setToAddr('');
-    setAmount('');
-    setFee('');
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-    setShowUnlockPassword(false);
-    setShowDownloadPassword(false);
-    setShowLoginPassword(false);
   };
+
   const generateWallet = async (wordCount, pathType) => {
     const strengthBytes = wordCount === 12 ? 16 : 32;
-    const entropy = ethers.utils.randomBytes(strengthBytes);
-    const mnemonic = ethers.utils.entropyToMnemonic(entropy);
+    const entropy = window.crypto.getRandomValues(new Uint8Array(strengthBytes));
+    const mnemonicObj = ethersV6.Mnemonic.fromEntropy(ethersV6.hexlify(entropy));
+    const mnemonic = mnemonicObj.phrase;
     const path = pathType === 'hardened' ? "m/44'/2070'/0'/0/0" : "m/44'/2070'/0/0/0";
-    const hdNode = ethers.utils.HDNode.fromMnemonic(mnemonic).derivePath(path);
-    const publicKey = hdNode.publicKey.slice(2);
-    const sha = ethers.utils.sha256('0x' + publicKey).slice(2);
-    const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
-    const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
+    const hdWallet = ethersV6.HDNodeWallet.fromPhrase(mnemonic, '', path);
+    const publicKey = hdWallet.publicKey.slice(2);
+    const sha = ethersV6.sha256('0x' + publicKey).slice(2);
+    const ripemd = ethersV6.ripemd160('0x' + sha).slice(2);
+    const checksum = ethersV6.sha256('0x' + ripemd).slice(2, 10);
     const address = ripemd + checksum;
     return {
       mnemonic,
       wordCount,
       pathType,
-      privateKey: hdNode.privateKey.slice(2),
+      privateKey: hdWallet.privateKey.slice(2),
       publicKey,
       address,
     };
   };
+
   const deriveWallet = (mnemonic, wordCount, pathType) => {
     try {
-      const normalizedMnemonic = mnemonic.trim().replace(/\s+/g, ' ');
-      const words = normalizedMnemonic.split(' ');
+      const words = mnemonic.trim().split(/\s+/);
       const expectedWordCount = Number(wordCount);
       if (words.length !== expectedWordCount) {
         throw new Error(`Invalid mnemonic: must have exactly ${expectedWordCount} words`);
       }
       const path = pathType === 'hardened' ? "m/44'/2070'/0'/0/0" : "m/44'/2070'/0/0/0";
-      const hdNode = ethers.utils.HDNode.fromMnemonic(normalizedMnemonic).derivePath(path);
-      const publicKey = hdNode.publicKey.slice(2);
-      const sha = ethers.utils.sha256('0x' + publicKey).slice(2);
-      const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
-      const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
+      const hdWallet = ethersV6.HDNodeWallet.fromPhrase(mnemonic, '', path);
+      const publicKey = hdWallet.publicKey.slice(2);
+      const sha = ethersV6.sha256('0x' + publicKey).slice(2);
+      const ripemd = ethersV6.ripemd160('0x' + sha).slice(2);
+      const checksum = ethersV6.sha256('0x' + ripemd).slice(2, 10);
       const address = ripemd + checksum;
       return {
-        mnemonic: normalizedMnemonic,
+        mnemonic,
         wordCount,
         pathType,
-        privateKey: hdNode.privateKey.slice(2),
+        privateKey: hdWallet.privateKey.slice(2),
         publicKey,
         address,
       };
     } catch (err) {
-      throw new Error(`Invalid mnemonic: ${err.message}`);
+      throw new Error('Invalid mnemonic');
     }
   };
-const importFromPrivateKey = (privKey) => {
-    console.log('Input length:', privKey.length); // Should be 64
-    console.log('Is hex:', /^[0-9a-fA-F]+$/.test(privKey)); // Should be true
+
+  const importFromPrivateKey = (privKey) => {
+    console.log('Input length:', privKey.length);  // Should be 64
+    console.log('Is hex:', /^[0-9a-fA-F]+$/.test(privKey));  // Should be true
     try {
       if (privKey.length !== 64) {
         throw new Error('Private key must be exactly 64 characters long');
@@ -476,13 +425,13 @@ const importFromPrivateKey = (privKey) => {
       if (!/^[0-9a-fA-F]+$/.test(privKey)) {
         throw new Error('Private key must consist of hexadecimal characters only (0-9, a-f, A-F)');
       }
-      const signer = new ethers.Wallet('0x' + privKey);
+      const signer = new ethersV6.Wallet('0x' + privKey);
       const publicKey = signer.signingKey.compressedPublicKey.slice(2);
-      const sha = ethers.utils.sha256('0x' + publicKey).slice(2);
-      const ripemd = ethers.utils.ripemd160('0x' + sha).slice(2);
-      const checksum = ethers.utils.sha256('0x' + ripemd).slice(2, 10);
+      const sha = ethersV6.sha256('0x' + publicKey).slice(2);
+      const ripemd = ethersV6.ripemd160('0x' + sha).slice(2);
+      const checksum = ethersV6.sha256('0x' + ripemd).slice(2, 10);
       const address = ripemd + checksum;
-      console.log('Derived address:', address); // For extra verification
+      console.log('Derived address:', address);  // For extra verification
       return {
         privateKey: privKey,
         publicKey,
@@ -493,25 +442,31 @@ const importFromPrivateKey = (privKey) => {
       throw new Error(err.message || 'Invalid private key');
     }
   };
+
   const handleWalletAction = async () => {
     setError(null);
     setIsWalletProcessed(false);
+
     if (walletAction === 'login' && !uploadedFile) {
       setError('Please upload the warthog_wallet.txt file');
       return;
     }
+
     if (walletAction === 'login') {
       loadWallet();
       return;
     }
+
     if (walletAction === 'derive' && !mnemonic) {
       setError('Please enter a seed phrase');
       return;
     }
+
     if (walletAction === 'import' && !privateKeyInput) {
       setError('Please enter a private key');
       return;
     }
+
     if (walletAction === 'derive') {
       const words = mnemonic.trim().split(/\s+/);
       const expectedWordCount = Number(wordCount);
@@ -520,6 +475,7 @@ const importFromPrivateKey = (privKey) => {
         return;
       }
     }
+
     try {
       let data;
       if (walletAction === 'create') {
@@ -539,24 +495,26 @@ const importFromPrivateKey = (privKey) => {
       console.error(`Wallet action error:`, err);
     }
   };
+
   const validateAddress = (addr) => {
     if (typeof addr !== 'string' || addr.length !== 48) {
       return { valid: false };
     }
     const ripemdHex = addr.slice(0, 40);
     const checksumHex = addr.slice(40);
-    const computedChecksum = ethers.utils.sha256('0x' + ripemdHex).slice(2, 10);
+    const computedChecksum = ethersV6.sha256('0x' + ripemdHex).slice(2, 10);
     return { valid: computedChecksum === checksumHex };
   };
+
   const handleValidateAddress = () => {
     setError(null);
     setValidateResult(null);
-    if (!address) {
+    if (!validateAddr) {
       setError('Please enter an address');
       return;
     }
     try {
-      const result = validateAddress(address);
+      const result = validateAddress(validateAddr);
       setValidateResult(result);
     } catch (err) {
       const errorMessage = err.message || 'Failed to validate address';
@@ -564,6 +522,7 @@ const importFromPrivateKey = (privKey) => {
       console.error('Validate error:', err);
     }
   };
+
   const getRoundedFeeE8 = async (feeWart) => {
     const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
     try {
@@ -574,47 +533,54 @@ const importFromPrivateKey = (privKey) => {
       throw new Error('Failed to round fee');
     }
   };
-  const handleSendTransaction = async () => {
+
+  const handleSendTransaction = async (fromPrivKey = wallet?.privateKey, fromAddress = wallet?.address, to = toAddr, amountVal = amount, feeVal = fee) => {
     if (sending) return; // Prevent multiple sends
     setSending(true);
     setError(null);
     setSendResult(null);
-    if (!toAddr || !amount || !fee) {
+    if (!to || !amountVal || !feeVal) {
       setError('Please fill in all transaction fields');
       setSending(false);
       return;
     }
-    const amountNum = parseFloat(amount);
-    const feeNum = parseFloat(fee);
+    const amountNum = parseFloat(amountVal);
+    const feeNum = parseFloat(feeVal);
     if (isNaN(amountNum) || amountNum <= 0 || isNaN(feeNum) || feeNum <= 0) {
       setError('Invalid amount or fee: must be positive numbers');
       setSending(false);
       return;
     }
-    const amountE8 = wartToE8(amount);
+    const amountE8 = wartToE8(amountVal);
     let feeE8;
     try {
-      feeE8 = await getRoundedFeeE8(fee);
+      feeE8 = await getRoundedFeeE8(feeVal);
     } catch {
       setError('Invalid fee or failed to round');
       setSending(false);
       return;
     }
-    const txPrivateKey = wallet?.privateKey;
-    if (!txPrivateKey) {
-      setError('No wallet saved. Please create, derive, or log in with a wallet first.');
+    if (!amountE8 || !feeE8) {
+      setError('Invalid amount or fee');
       setSending(false);
       return;
     }
+    if (!fromPrivKey) {
+      setError('No private key available.');
+      setSending(false);
+      return;
+    }
+    const isForSub = fromAddress !== wallet?.address;
     if (nextNonce === null || pinHeight === null || pinHash === null) {
       setError('Nonce or chain head not available. Fetching latest...');
-      await fetchBalanceAndNonce(wallet.address); // Fetch fresh if missing
+      await fetchBalanceAndNonce(fromAddress, isForSub); // Fetch fresh if missing
     }
     if (nextNonce === null || pinHeight === null || pinHash === null) {
       setError('Failed to fetch nonce or chain head. Please try again.');
       setSending(false);
       return;
     }
+
     let txNonce = nextNonce;
     if (nonceInput !== '') {
       const parsedNonce = Number(nonceInput);
@@ -625,28 +591,58 @@ const importFromPrivateKey = (privKey) => {
       }
       txNonce = parsedNonce;
     }
+
     // Capture transaction details for logging if failed
     const txDetails = {
-      toAddr,
-      amount,
-      fee,
+      toAddr: to,
+      amount: amountVal,
+      fee: feeVal,
       nonce: txNonce,
       timestamp: new Date().toISOString(),
     };
+
+    // NEW: Faux MetaMask confirmation with tx details
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length === 0) {
+          throw new Error('No MetaMask account connected. Please connect your wallet.');
+        }
+        const signerAddress = accounts[0];  // Use connected L1 address for faux sign
+
+        const txSummaryMessage = `Confirm Warthog Transaction:\nFrom: ${fromAddress}\nTo: ${to}\nAmount: ${amountVal} WART\nFee: ${feeVal} WART\nNonce: ${txNonce}\n\nThis is a confirmation step—approve to proceed.`;
+
+        // Trigger MetaMask popup with readable details
+        await window.ethereum.request({
+          method: 'personal_sign',
+          params: [txSummaryMessage, signerAddress],
+        });
+        // If here, user confirmed—proceed with actual software signing
+      } catch (err) {
+        setError(`MetaMask confirmation failed: ${err.message}. Transaction canceled.`);
+        setSending(false);
+        return;  // Exit without sending
+      }
+    } else {
+      // No MetaMask: Skip faux confirmation (or prompt for installation)
+      console.warn('MetaMask not detected—proceeding without confirmation.');
+    }
+
+    // Proceed with WORKING tx building and software signing
     try {
-      // Use current state values
-      const pinHashBytes = ethers.utils.arrayify('0x' + pinHash);
+      const pinHashBytes = ethersV6.getBytes('0x' + pinHash);
       const heightBytes = new Uint8Array(4);
       new DataView(heightBytes.buffer).setUint32(0, pinHeight, false);
       const nonceBytes = new Uint8Array(4);
-      new DataView(nonceBytes.buffer).setUint32(0, txNonce, false); // Use txNonce
+      new DataView(nonceBytes.buffer).setUint32(0, txNonce, false);
       const reserved = new Uint8Array(3);
       const feeBytes = new Uint8Array(8);
       new DataView(feeBytes.buffer).setBigUint64(0, BigInt(feeE8), false);
-      const toRawBytes = ethers.utils.arrayify('0x' + toAddr.slice(0, 40));
+      const toRawBytes = ethersV6.getBytes('0x' + to.slice(0, 40));
       const amountBytes = new Uint8Array(8);
       new DataView(amountBytes.buffer).setBigUint64(0, BigInt(amountE8), false);
-      const messageBytes = ethers.utils.concat([
+
+      const messageBytes = ethersV6.concat([
         pinHashBytes,
         heightBytes,
         nonceBytes,
@@ -655,23 +651,27 @@ const importFromPrivateKey = (privKey) => {
         toRawBytes,
         amountBytes,
       ]);
-      const txHash = ethers.utils.sha256(messageBytes);
-      const txHashBytes = ethers.utils.arrayify(txHash);
-      const signer = new ethers.Wallet('0x' + txPrivateKey);
+
+      const txHash = ethersV6.sha256(messageBytes);
+      const txHashBytes = ethersV6.getBytes(txHash);
+
+      const signer = new ethersV6.Wallet('0x' + fromPrivKey);
       const sig = signer.signingKey.sign(txHashBytes);
+
       const rHex = sig.r.slice(2);
       const sHex = sig.s.slice(2);
       const recid = sig.v - 27;
       const recidHex = recid.toString(16).padStart(2, '0');
       const signature65 = rHex + sHex + recidHex;
+
       const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
       console.log('Sending transaction request to:', `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`);
       const response = await axios.post(
         `${API_URL}?nodePath=transaction/add&${nodeBaseParam}`,
         {
           pinHeight,
-          nonceId: txNonce, // Use txNonce
-          toAddr,
+          nonceId: txNonce,
+          toAddr: to,
           amountE8,
           feeE8,
           signature65,
@@ -681,56 +681,96 @@ const importFromPrivateKey = (privKey) => {
       console.log('Send transaction response status:', response.status);
       const data = response.data;
       console.log('Send transaction response data:', data);
+
       // Check for error in response data
       if (data.error || (data.code && data.code !== 0)) {
         throw new Error(data.error || `Transaction error code: ${data.code}`);
       }
+
       setSendResult(data);
+
       // Optimistic updates on success
       const newNextNonce = Math.max(nextNonce || 0, txNonce + 1);
       setNextNonce(newNextNonce);
-      if (wallet?.address) {
+      if (wallet?.address && !isForSub) {
         localStorage.setItem(`warthogNextNonce_${wallet.address}`, newNextNonce);
       }
-      setBalance((parseFloat(balance) - amountNum - feeNum).toFixed(8));
-      // Step 2 insertion: Log successful sent transaction as pending
-      setSentTransactions((prev) => [
-        ...prev,
-        { ...txDetails, txHash: data.data.txHash, status: 'pending' }, // Adjust data.data if hash is elsewhere
-      ]);
-      // Clear input fields
-      setToAddr('');
-      setAmount('');
-      setFee('');
-      setNonceInput('');
+      if (!isForSub) {
+        setBalance((parseFloat(balance) - amountNum - feeNum).toFixed(8));
+      }
+
+      // Log successful sent transaction as pending (only for main wallet)
+      if (!isForSub) {
+        setSentTransactions((prev) => [
+          ...prev,
+          { ...txDetails, txHash: data.data?.txHash || data.txHash, status: 'pending' }, // Adjust based on response structure
+        ]);
+      }
+
+      // Clear input fields on success if sending from main
+      if (!isForSub) {
+        setToAddr('');
+        setAmount('');
+        setFee('');
+        setNonceInput('');
+      }
+
+      return data; // Return response for sub-deposit use (e.g., txHash capture)
     } catch (err) {
-      const errorMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to send transaction';
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to send transaction';
       setError(errorMessage);
       console.error('Fetch send transaction error:', err);
-      // Log the failed transaction
-      setFailedTransactions((prev) => [
-        ...prev,
-        { ...txDetails, error: errorMessage },
-      ]);
+
+      // Log the failed transaction (only for main wallet)
+      if (!isForSub) {
+        setFailedTransactions((prev) => [
+          ...prev,
+          { ...txDetails, error: errorMessage },
+        ]);
+      }
+
+      return null; // Return null on error for callers
     } finally {
       setSending(false);
     }
   };
-  const handleInstallClick = async () => {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-    } else {
-      console.log('User dismissed the install prompt');
+  // Add this function (placeholder; implement real proof fetching as needed)
+  const getWartTxProof = async (txHash) => {
+    propSetLoading(true);
+    try {
+      const nodeBaseParam = `nodeBase=${encodeURIComponent(selectedNode)}`;
+      console.log('Fetching Warthog TX proof from:', `${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
+      const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      console.log('TX proof response status:', response.status);
+      const data = response.data.data || response.data;
+      console.log('TX proof data:', data);
+      // Assuming the full TX data serves as the "proof" for backend validation (e.g., { blockHash, txIndex, from, to, amount, ... })
+      return data;
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to fetch Warthog TX proof';
+      setError(errorMessage);
+      console.error('TX proof error:', err);
+      throw new Error(errorMessage);
+    } finally {
+      propSetLoading(false);
     }
-    setDeferredPrompt(null);
-  }
-};
+  };
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+      setDeferredPrompt(null);
+    }
+  };
+
   const copyToClipboard = (text, setter) => {
     navigator.clipboard.writeText(text).then(() => {
       setter(text); // Set to show "Copied!" feedback
@@ -739,66 +779,27 @@ const importFromPrivateKey = (privKey) => {
       console.error('Failed to copy: ', err);
     });
   };
-  // Add this function (placeholder; implement real proof fetching as needed)
-  const getWartTxProof = async (txHash) => {
-    propSetLoading(true);
-    try {
-      for (const node of [selectedNode, ...defaultNodeList.filter(n => n !== selectedNode)]) {
-        try {
-          const nodeBaseParam = `nodeBase=${encodeURIComponent(node)}`;
-          console.log('Fetching Warthog TX proof from:', `${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`);
-          const response = await axios.get(`${API_URL}?nodePath=transaction/lookup/${txHash}&${nodeBaseParam}`, {
-            headers: { 'Content-Type': 'application/json' },
-          });
-          console.log('TX proof response status:', response.status);
-          const data = response.data.data || response.data;
-          console.log('TX proof data:', data);
-          // Assuming the full TX data serves as the "proof" for backend validation (e.g., { blockHash, txIndex, from, to, amount, ... })
-          return data;
-        } catch (err) {
-          // try next node
-        }
-      }
-      throw new Error('All nodes failed to provide TX proof');
-    } catch (err) {
-      const errorMessage = err.message || 'Failed to fetch Warthog TX proof';
-      setError(errorMessage);
-      console.error('TX proof error:', err);
-      throw new Error(errorMessage);
-    } finally {
-      propSetLoading(false);
-    }
-  };
+
   return (
-    <div className="warthog-wallet container mx-auto px-6 py-12 flex flex-col gap-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Warthog Wallet</h1>
-      </div>
-{deferredPrompt && (
-  <button onClick={handleInstallClick} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 transition-colors duration-200">
-    Install Wallet App
-  </button>
-)}
-{updateAvailable && (
-  <button onClick={handleUpdate} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 transition-colors duration-200">
-    Update App Available
-  </button>
-)}
+    <div className="warthog-section">
+      <h1>Warthog Wallet</h1>
+      {deferredPrompt && (
+        <button onClick={handleInstallClick} className="btn primary small" style={{ marginBottom: '20px' }}>
+          Install Wallet App
+        </button>
+      )}
       {!showModal && (
         <>
           {isLoggedIn && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Node Selection</h2>
-              <div className="mb-4 px-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Node:</label>
+            <section>
+              <h2>Node Selection</h2>
+              <div className="form-group">
+                <label>Select Node:</label>
                 <select
                   value={selectedNode}
-                  onChange={(e) => {
-                    setSelectedNode(e.target.value);
-                    localStorage.setItem('selectedNode', e.target.value);
-                  }}
-                  className="node-select mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-               >
+                  onChange={(e) => setSelectedNode(e.target.value)}
+                  className="input"
+                >
                   {defaultNodeList.map((node, index) => (
                     <option key={index} value={node}>
                       {node}
@@ -806,192 +807,142 @@ const importFromPrivateKey = (privKey) => {
                   ))}
                 </select>
               </div>
-            </div>
+            </section>
           )}
+
           {showPasswordPrompt && !wallet && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Unlock Wallet</h2>
-              <div className="mb-4 px-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload Wallet File (optional):</label>
-                <input type="file" accept=".txt" onChange={handleFileUpload} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+            <section>
+              <h2>Unlock Wallet</h2>
+              <div className="form-group">
+                <label>Upload Wallet File (optional):</label>
+                <input type="file" accept=".txt" onChange={handleFileUpload} className="input" />
               </div>
-              <div className="mb-4 px-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password:</label>
-                <div className="relative">
-                  <input
-                    type={showUnlockPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter password to unlock wallet"
-                    className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white p-6 pr-10 m-5"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowUnlockPassword(!showUnlockPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  >
-                    {showUnlockPassword ? "🙈" : "👁️"}
-                  </button>
-                </div>
+              <div className="form-group">
+                <label>Password:</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password to unlock wallet"
+                  className="input"
+                />
               </div>
-              <div className="flex space-x-2 px-4">
-                <button onClick={loadWallet} className=" px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800">Unlock Wallet</button>
+              <div className="button-group">
+                <button onClick={loadWallet} className="btn primary small">Unlock Wallet</button>
                 <button
                   onClick={() => {
                     setShowPasswordPrompt(false);
                     setPassword('');
                     setUploadedFile(null);
-                    setShowUnlockPassword(false);
                   }}
-                  className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200"
+                  className="btn danger small"
                 >
+                  Cancel
+                </button>
+              </div>
+            </section>
+          )}
+
+          {wallet && (
+            <section style={{ textAlign: 'left' }}>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <h2>Wallet</h2>
+                <button
+                  className="btn primary small"
+                  onClick={() => setShowDownloadPrompt(true)}
+                >
+                  Download Wallet File
+                </button>
+              </div>
+              <p className="wallet-address">
+                <strong>Address:</strong> {wallet.address}
+              </p>
+              <p>
+                <strong>Balance:</strong>{' '}
+                {balance !== null ? `${balance} WART` : 'Loading...'}
+                {balance !== null && !isRefreshingBalance && <span style={{ color: '#00ffcc' }}>●</span>}
+                {isRefreshingBalance && <span style={{ animation: 'blink 1s infinite', color: 'yellow' }}>●</span>}
+              </p>
+              <div className="button-group">
+                <button onClick={() => fetchBalanceAndNonce(wallet.address)} className="btn primary small">
+                  Refresh Balance
+                </button>
+                <button onClick={clearWallet} className="btn danger small">Clear Wallet</button>
+              </div>
+
+
+
+              {/* Liquid Token Operations */}
+              <div className="liquid-actions" style={{ marginTop: '2rem', padding: '1rem', backgroundColor: 'rgba(0,255,204,0.1)', borderRadius: '8px' }}>
+                <h3 style={{ color: '#00ffcc', marginBottom: '1rem' }}>Liquid Token Operations</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <button onClick={() => send({ type: "mint_liquid" })} className="btn primary small" disabled={propLoading}>
+                    Mint LIQUID
+                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="number"
+                      placeholder="Amount to burn"
+                      value={burnAmt}
+                      onChange={(e) => setBurnAmt(e.target.value)}
+                      className="input"
+                      style={{ flex: 1, minWidth: '120px' }}
+                    />
+                    <button onClick={() => burnAmt && send({ type: "burn_liquid", amount: burnAmt })} className="btn danger small" disabled={!burnAmt || propLoading}>
+                      Burn & Redeem
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <p className="warning">
+                Warning: Private key is encrypted in localStorage. Keep your password secure.
+              </p>
+              <TransactionHistory address={wallet.address} node={selectedNode} />
+            </section>
+          )}
+
+          {showDownloadPrompt && (
+            <div className="modal-overlay">
+              <div className="modal-content">
+                <h2>Download Wallet File</h2>
+                <div className="form-group">
+                  <label>Password to Encrypt Wallet:</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password to encrypt wallet"
+                    className="input"
+                  />
+                </div>
+                <button onClick={() => { downloadWallet(wallet); setShowDownloadPrompt(false); }} className="btn primary small">
+                  Download
+                </button>
+                <button onClick={() => { setShowDownloadPrompt(false); setPassword(''); }} className="btn danger small">
                   Cancel
                 </button>
               </div>
             </div>
           )}
-          {wallet && (
-  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Wallet</h2>
-      <button
-        className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-        onClick={() => setShowDownloadPrompt(true)}
-      >
-        Download Wallet File
-      </button>
-    </div>
-    <div className="mb-4 px-4">
-      <p className="text-sm font-medium text-gray-700 dark:text-gray-300"><strong>Address:</strong></p>
-      <p
-        className="text-gray-900 dark:text-white break-all cursor-pointer"
-        onClick={() => navigator.clipboard.writeText(wallet.address).then(() => alert('Address copied to clipboard!'))}
-        title="Click to copy address"
-      >
-        {wallet.address}
-      </p>
-    </div>
-    <div className="mb-4 px-4">
-      <p className="text-sm font-medium text-gray-700 dark:text-gray-300"><strong>Balance:</strong> {balance !== null ? `${balance}` : 'Loading...'} {usdBalance && usdBalance !== '$0.00' && usdBalance !== 'N/A' ? `(${usdBalance})` : ''}</p>
-    </div>
-    <div className="flex space-x-2 mt-4 px-4">
-      <button onClick={() => fetchBalanceAndNonce(wallet.address)} className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800">
-        Refresh Balance
-      </button>
-      <button onClick={clearWallet} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200">
-        Clear Wallet
-      </button>
-    </div>
-    <div className="px-4">
-      <p className="text-yellow-600 dark:text-yellow-400 text-sm mb-4">
-        Warning: Private key is encrypted in localStorage. Keep your password secure.
-      </p>
-    </div>
-    <div className="transaction-history-padding">
-      <TransactionHistory address={wallet.address} node={selectedNode} onCountsUpdate={setBlockCounts} blockCounts={blockCounts} refreshTrigger={refreshHistory} isPolling={isPollingHistory} />
-    </div>
-  </div>
-)}
-          {showDownloadPrompt && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
-                <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Download Wallet File</h2>
-                <div className="mb-4 px-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password to Encrypt Wallet:</label>
-                  <div className="relative">
-                    <input
-                      type={showDownloadPassword ? "text" : "password"}
-                      value={downloadPassword}
-                      onChange={(e) => setDownloadPassword(e.target.value)}
-                      placeholder="Enter password to encrypt wallet"
-                      className="mt-1 block w-full px-3 py-2 pr-10 m-5 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowDownloadPassword(!showDownloadPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    >
-                      {showDownloadPassword ? "🙈" : "👁️"}
-                    </button>
-                  </div>
-                </div>
-                <div className="mb-4 px-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Confirm Password:</label>
-                  <div className="relative">
-                    <input
-                      type={showConfirmDownloadPassword ? "text" : "password"}
-                      value={confirmDownloadPassword}
-                      onChange={(e) => setConfirmDownloadPassword(e.target.value)}
-                      placeholder="Confirm password"
-                      className="mt-1 block w-full px-3 py-2 pr-10 m-5 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmDownloadPassword(!showConfirmDownloadPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    >
-                      {showConfirmDownloadPassword ? "🙈" : "👁️"}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex space-x-2 mt-4 px-4">
-                  <button onClick={() => {
-                    if (!downloadPassword) {
-                      setError('Please provide a password to encrypt and download the wallet file');
-                      return;
-                    }
-                    if (downloadPassword !== confirmDownloadPassword) {
-                      setError('Passwords do not match');
-                      return;
-                    }
-                    setError(null);
-                    downloadWallet(wallet, downloadPassword);
-                    setShowDownloadPrompt(false);
-                  }} className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800">
-                    Download
-                  </button>
-                  <button onClick={() => { setShowDownloadPrompt(false); setDownloadPassword(''); setConfirmDownloadPassword(''); setShowDownloadPassword(false); setShowConfirmDownloadPassword(false); }} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+
           {!isLoggedIn && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Wallet Management</h2>
-              <div className="mb-4 px-4">
-                <label className="block text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">Action:</label>
+            <section>
+              <h2>Wallet Management</h2>
+              <div className="form-group">
+                <label>Action:</label>
                 <select
                   value={walletAction}
                   onChange={(e) => {
-                    const newAction = e.target.value;
-                    setWalletAction(newAction);
+                    setWalletAction(e.target.value);
                     setError(null);
+                    setMnemonic('');
+                    setPrivateKeyInput('');
+                    setUploadedFile(null);
+                    setPassword('');
                     setIsWalletProcessed(false);
-                    if (newAction === 'create') {
-                      setMnemonic('');
-                      setPrivateKeyInput('');
-                      setUploadedFile(null);
-                      setPassword('');
-                      setShowLoginPassword(false);
-                    } else if (newAction === 'derive') {
-                      setPrivateKeyInput('');
-                      setUploadedFile(null);
-                      setPassword('');
-                      setShowLoginPassword(false);
-                    } else if (newAction === 'import') {
-                      setMnemonic('');
-                      setUploadedFile(null);
-                      setPassword('');
-                      setShowLoginPassword(false);
-                    } else if (newAction === 'login') {
-                      setMnemonic('');
-                      setPrivateKeyInput('');
-                      setShowLoginPassword(false);
-                    }
                   }}
-                  className="mt-1 block w-full px-3 py-2 m-5 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  className="input"
                 >
                   <option value="create">Create New Wallet</option>
                   <option value="derive">Derive Wallet from Seed Phrase</option>
@@ -1000,68 +951,59 @@ const importFromPrivateKey = (privKey) => {
                 </select>
               </div>
               {walletAction === 'derive' && (
-                <div className="mb-4 px-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Seed Phrase:</label>
+                <div className="form-group">
+                  <label>Seed Phrase:</label>
                   <input
                     type="text"
                     value={mnemonic}
                     onChange={(e) => setMnemonic(e.target.value)}
                     placeholder="Enter 12 or 24-word seed phrase"
-                    className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="input"
                   />
                 </div>
               )}
               {walletAction === 'import' && (
-                <div className="mb-4 px-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Private Key:</label>
+                <div className="form-group">
+                  <label>Private Key:</label>
                   <input
                     type="text"
                     value={privateKeyInput}
-                   onChange={(e) => setPrivateKeyInput(e.target.value.replace(/\s/g, ''))}
+                    onChange={(e) => setPrivateKeyInput(e.target.value.replace(/\s/g, ''))}
                     placeholder="Enter 64-character hex private key"
-                    className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="input"
                   />
                 </div>
               )}
               {walletAction === 'login' && (
                 <>
-                  <div className="mb-4 px-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload Wallet File (warthog_wallet.txt):</label>
+                  <div className="form-group">
+                    <label>Upload Wallet File (warthog_wallet.txt):</label>
                     <input
                       type="file"
                       accept=".txt"
                       onChange={handleFileUpload}
-                      className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      className="input"
                     />
                   </div>
-                  <div className="mb-4 px-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password:</label>
-                    <div className="relative">
-                      <input
-                        type={showLoginPassword ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter password to decrypt wallet"
-                        className="mt-1 block w-full px-3 py-2 pr-10 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                      >
-                        {showLoginPassword ? "🙈" : "👁️"}
-                      </button>
-                    </div>
+                  <div className="form-group">
+                    <label>Password:</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter password to decrypt wallet"
+                      className="input"
+                    />
                   </div>
                 </>
               )}
               {(walletAction === 'create' || walletAction === 'derive') && (
-                <div className="mb-4 px-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Word Count:</label>
+                <div className="form-group">
+                  <label>Word Count:</label>
                   <select
                     value={wordCount}
                     onChange={(e) => setWordCount(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="input"
                   >
                     <option value="12">12 Words</option>
                     <option value="24">24 Words</option>
@@ -1069,19 +1011,19 @@ const importFromPrivateKey = (privKey) => {
                 </div>
               )}
               {(walletAction === 'create' || walletAction === 'derive') && wordCount === '12' && (
-                <div className="mb-4 px-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Derivation Path Type:</label>
+                <div className="form-group">
+                  <label>Derivation Path Type:</label>
                   <select
                     value={pathType}
                     onChange={(e) => setPathType(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="input"
                   >
                     <option value="hardened">Hardened (m/44'/2070'/0'/0/0)</option>
                     <option value="non-hardened">Non-Hardened (m/44'/2070'/0/0/0)</option>
                   </select>
                 </div>
               )}
-              <button onClick={handleWalletAction} className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800">
+              <button onClick={handleWalletAction} className="btn primary small">
                 {walletAction === 'create'
                   ? 'Create Wallet'
                   : walletAction === 'derive'
@@ -1090,381 +1032,343 @@ const importFromPrivateKey = (privKey) => {
                   ? 'Import Wallet'
                   : 'Login'}
               </button>
-            </div>
+            </section>
           )}
+
           {isLoggedIn && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Validate Address</h2>
-              <div className="mb-4 px-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Address:</label>
+            <section>
+              <h2>Validate Address</h2>
+              <div className="form-group">
+                <label>Address:</label>
                 <input
                   type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value.trim())}
+                  value={validateAddr}
+                  onChange={(e) => setValidateAddr(e.target.value.trim())}
                   placeholder="Enter 48-character address"
-                  className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  className="input"
                 />
               </div>
-              <button onClick={handleValidateAddress} className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800">Validate Address</button>
+              <button onClick={handleValidateAddress} className="btn primary small">Validate Address</button>
               {validateResult && (
-                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-md">
-                  <pre className="text-sm text-gray-900 dark:text-white">{JSON.stringify(validateResult, null, 2)}</pre>
+                <div className="result">
+                  <pre>{JSON.stringify(validateResult, null, 2)}</pre>
                 </div>
               )}
-            </div>
+            </section>
           )}
-         {isLoggedIn && (
-  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-    <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Send Transaction</h2>
-    <div className="mb-4 px-4">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">To Address:</label>
-      <input
-        type="text"
-        value={toAddr}
-        onChange={(e) => setToAddr(e.target.value.trim())}
-        placeholder="Enter 48-character to address"
-        className="mt-1 block w-full px-3 py-2 mx-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"  // Added mx-2 here (remove the duplicate px-1 from your original)
-      />
-    </div>
-    <div className="mb-4 px-4">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Amount (WART):</label>
-      <input
-        type="text"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value.trim())}
-        placeholder="Enter amount in WART (e.g., 1)"
-        className="mt-1 block w-full px-3 py-2 mx-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"  // Added mx-2
-      />
-    </div>
-    <div className="mb-4 px-4">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Fee (WART):</label>
-      <input
-        type="text"
-        value={fee}
-        onChange={(e) => setFee(e.target.value.trim())}
-        placeholder="Enter fee in WART (e.g., 0.0001)"
-        className="mt-1 block w-full px-3 py-2 mx-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"  // Added mx-2
-      />
-    </div>
-    <div className="mb-4 px-4">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nonce:</label>
-      <input
-        type="text"
-        value={nonceInput}
-        onChange={(e) => setNonceInput(e.target.value.trim())}
-        placeholder={`Auto: ${nextNonce || 'Loading'}`}
-        className="mt-1 block w-full px-3 py-2 mx-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"  // Added mx-2
-      />
-    </div>
-    <button onClick={handleSendTransaction} disabled={sending} className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed">
-      {sending ? 'Sending...' : 'Send Transaction'}
-    </button>
-    {sendResult && (
-      <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-md">
-        <pre className="text-sm text-gray-900 dark:text-white">{JSON.stringify(sendResult, null, 2)}</pre>
-      </div>
-    )}
-  </div>
-)}
-{isLoggedIn && sentTransactions.length > 0 && (
-  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-    <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Sent Transactions Log</h2>
-    <button onClick={updateTxStatuses} className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800 mb-4">Refresh Tx Status</button>
-    <ul className="space-y-4">
-      {sentTransactions.map((tx, index) => (
-        <li key={index} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-md border border-gray-200 dark:border-gray-600">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-            <p><strong className="text-gray-700 dark:text-gray-300">Timestamp:</strong> {tx.timestamp}</p>
-            <p>
-              <strong className="text-gray-700 dark:text-gray-300">From:</strong>{' '}
-              <span
-                className="text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 break-all"
-                title={wallet.address}
-                onClick={() => copyToClipboard(wallet.address, setCopiedFromAddr)}
-              >
-                {isSmallScreen767 ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : wallet.address}
-                {copiedFromAddr === wallet.address ? ' (Copied!)' : ''}
-              </span>
-            </p>
-            <p>
-              <strong className="text-gray-700 dark:text-gray-300">To:</strong>{' '}
-              <span
-                className="text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 break-all"
-                title={tx.toAddr}
-                onClick={() => copyToClipboard(tx.toAddr, setCopiedToAddr)}
-              >
-                {isSmallScreen767 ? `${tx.toAddr.slice(0, 6)}...${tx.toAddr.slice(-4)}` : tx.toAddr}
-                {copiedToAddr === tx.toAddr ? ' (Copied!)' : ''}
-              </span>
-            </p>
-            <p><strong className="text-gray-700 dark:text-gray-300">Amount:</strong> {tx.amount} WART</p>
-            <p><strong className="text-gray-700 dark:text-gray-300">Fee:</strong> {tx.fee} WART</p>
-            <p><strong className="text-gray-700 dark:text-gray-300">Nonce:</strong> {tx.nonce}</p>
-            <p>
-              <strong className="text-gray-700 dark:text-gray-300">Tx Hash:</strong>{' '}
-              <span
-                className="text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 break-all"
-                title={tx.txHash}
-                onClick={() => copyToClipboard(tx.txHash, setCopiedTxId)}
-              >
-                {isSmallScreen767 ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : tx.txHash}
-                {copiedTxId === tx.txHash ? ' (Copied!)' : ''}
-              </span>
-            </p>
-            <p><strong className="text-gray-700 dark:text-gray-300">Status:</strong> {tx.status} {tx.confirmations ? `(${tx.confirmations} confirmations)` : ''}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
-          {isLoggedIn && failedTransactions.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Failed Transactions Log</h2>
-              <ul className="space-y-4">
-                {failedTransactions.map((tx, index) => (
-                  <li key={index} className="bg-red-50 dark:bg-red-900 p-4 rounded-md border border-red-200 dark:border-red-700">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                      <p><strong className="text-red-700 dark:text-red-300">Timestamp:</strong> {tx.timestamp}</p>
-                      <p>
-                        <strong className="text-red-700 dark:text-red-300">From:</strong>{' '}
-                        <span
-                          className="text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 break-all"
-                          title={wallet.address}
-                          onClick={() => copyToClipboard(wallet.address, setCopiedFromAddr)}
-                        >
-                          {isSmallScreen767 ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : wallet.address}
-                          {copiedFromAddr === wallet.address ? ' (Copied!)' : ''}
-                        </span>
-                      </p>
-                      <p>
-                        <strong className="text-red-700 dark:text-red-300">To:</strong>{' '}
-                        <span
-                          className="text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 break-all"
-                          title={tx.toAddr}
-                          onClick={() => copyToClipboard(tx.toAddr, setCopiedToAddr)}
-                        >
-                          {isSmallScreen767 ? `${tx.toAddr.slice(0, 6)}...${tx.toAddr.slice(-4)}` : tx.toAddr}
-                          {copiedToAddr === tx.toAddr ? ' (Copied!)' : ''}
-                        </span>
-                      </p>
-                      <p><strong className="text-red-700 dark:text-red-300">Amount:</strong> {tx.amount} WART</p>
-                      <p><strong className="text-red-700 dark:text-red-300">Fee:</strong> {tx.fee} WART</p>
-                      <p><strong className="text-red-700 dark:text-red-300">Nonce:</strong> {tx.nonce}</p>
-                      <p><strong className="text-red-700 dark:text-red-300">Error:</strong> {tx.error}</p>
-                    </div>
+
+          {isLoggedIn && (
+            <section>
+              <h2>Send Transaction</h2>
+              <div className="form-group">
+                <label>To Address:</label>
+                <input
+                  type="text"
+                  value={toAddr}
+                  onChange={(e) => setToAddr(e.target.value.trim())}
+                  placeholder="Enter 48-character to address"
+                  className="input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Amount (WART):</label>
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.trim())}
+                  placeholder="Enter amount in WART (e.g., 1)"
+                  className="input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Fee (WART):</label>
+                <input
+                  type="text"
+                  value={fee}
+                  onChange={(e) => setFee(e.target.value.trim())}
+                  placeholder="Enter fee in WART (e.g., 0.0001)"
+                  className="input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Nonce:</label>
+                <input
+                  type="text"
+                  value={nonceInput}
+                  onChange={(e) => setNonceInput(e.target.value.trim())}
+                  placeholder={`Auto: ${nextNonce || 'Loading'}`}
+                  className="input"
+                />
+              </div>
+              <button onClick={() => handleSendTransaction()} disabled={sending} className="btn primary small">
+                {sending ? 'Sending...' : 'Send Transaction'}
+              </button>
+              {sendResult && (
+                <div className="result">
+                  <pre>{JSON.stringify(sendResult, null, 2)}</pre>
+                </div>
+              )}
+            </section>
+          )}
+
+          {isLoggedIn && sentTransactions.length > 0 && (
+            <section>
+              <h2>Sent Transactions Log {isPollingTx && <span style={{ animation: 'blink 1s infinite' }}>●</span>}</h2>
+              <button onClick={updateTxStatuses} className="btn primary small">Refresh Tx Status</button>
+              <ul style={{ listStyle: 'none' }}>
+                {sentTransactions.map((tx, index) => (
+                  <li key={index} className="tx-log-item">
+                    <p><strong>Timestamp:</strong> {tx.timestamp}</p>
+                    <p>
+                      <strong>From:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={wallet.address}
+                        onClick={() => copyToClipboard(wallet.address, setCopiedFromAddr)}
+                      >
+                        {isSmallScreen767 ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : wallet.address}
+                        {copiedFromAddr === wallet.address ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p>
+                      <strong>To:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={tx.toAddr}
+                        onClick={() => copyToClipboard(tx.toAddr, setCopiedToAddr)}
+                      >
+                        {isSmallScreen767 ? `${tx.toAddr.slice(0, 6)}...${tx.toAddr.slice(-4)}` : tx.toAddr}
+                        {copiedToAddr === tx.toAddr ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p><strong>Amount:</strong> {tx.amount} WART</p>
+                    <p><strong>Fee:</strong> {tx.fee} WART</p>
+                    <p><strong>Nonce (Session Index):</strong> {tx.nonce}</p>
+                    <p>
+                      <strong>Tx Hash:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={tx.txHash}
+                        onClick={() => copyToClipboard(tx.txHash, setCopiedTxId)}
+                      >
+                        {isSmallScreen767 ? `${tx.txHash.slice(0, 6)}...${tx.txHash.slice(-4)}` : tx.txHash}
+                        {copiedTxId === tx.txHash ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p><strong>Status:</strong> {tx.status} {tx.confirmations ? `(${tx.confirmations} confirmations)` : ''}</p>
                   </li>
                 ))}
               </ul>
-            </div>
+            </section>
           )}
+
+          {isLoggedIn && failedTransactions.length > 0 && (
+            <section>
+              <h2>Failed Transactions Log</h2>
+              <ul style={{ listStyle: 'none' }}>
+                {failedTransactions.map((tx, index) => (
+                  <li key={index} className="tx-log-item">
+                    <p><strong>Timestamp:</strong> {tx.timestamp}</p>
+                    <p>
+                      <strong>From:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={wallet.address}
+                        onClick={() => copyToClipboard(wallet.address, setCopiedFromAddr)}
+                      >
+                        {isSmallScreen767 ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : wallet.address}
+                        {copiedFromAddr === wallet.address ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p>
+                      <strong>To:</strong>{' '}
+                      <span
+                        className="truncate-text cursor-pointer"
+                        title={tx.toAddr}
+                        onClick={() => copyToClipboard(tx.toAddr, setCopiedToAddr)}
+                      >
+                        {isSmallScreen767 ? `${tx.toAddr.slice(0, 6)}...${tx.toAddr.slice(-4)}` : tx.toAddr}
+                        {copiedToAddr === tx.toAddr ? ' (Copied!)' : ''}
+                      </span>
+                    </p>
+                    <p><strong>Amount:</strong> {tx.amount} WART</p>
+                    <p><strong>Fee:</strong> {tx.fee} WART</p>
+                    <p><strong>Nonce:</strong> {tx.nonce}</p>
+                    <p><strong>Error:</strong> {tx.error}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {isLoggedIn && wallet.mnemonic && (
             <SubWallet
-              mainWallet={wallet}
+              mainWallet={wallet} // Pass full wallet object
               mainMnemonic={wallet.mnemonic}
               selectedNode={selectedNode}
               fetchBalanceAndNonce={fetchBalanceAndNonce}
-              sendTransaction={handleSendTransaction}
+              sendTransaction={handleSendTransaction} // Matches your existing prop
               send={send}
-              address={wallet.address}
-              l1Address={l1Address}
+              address={wallet.address} // Fixed name
+              l1Address={l1Address} // Pass L1 MetaMask address
               loading={propLoading}
               setLoading={propSetLoading}
               subWallets={subWallets}
               setSubWallets={setSubWallets}
               subIndex={subIndex}
               setSubIndex={setSubIndex}
-              getWartTxProof={getWartTxProof}
+              subDepositAmt={subDepositAmt}
+              setSubDepositAmt={setSubDepositAmt}
+              selectedSub={selectedSub}
+              setSelectedSub={setSelectedSub}
+              voucherPayload={voucherPayload}
+              setVoucherPayload={setVoucherPayload}
+              setWartToAddr={setToAddr} // Maps to parent's setToAddr
+              setWartAmount={setAmount} // Maps to parent's setAmount
+              setWartFee={setFee} // Maps to parent's setFee
+              getWartTxProof={getWartTxProof} // New function
               sentTransactions={sentTransactions}
             />
           )}
+
           {error && (
-            <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 p-4 rounded-md">
+            <div className="error">
               <strong>Error:</strong> {error}
             </div>
           )}
         </>
       )}
-     {showModal && walletData && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div className="modal-content bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-      <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Wallet Information</h2>
-      <p className="text-yellow-600 dark:text-yellow-400 mb-4">
-        Warning: Please write down your seed phrase (if available) and private key on a piece of paper and store them securely. Do not share them with anyone.
-      </p>
-      <p className="text-gray-700 dark:text-gray-300 mb-2">Options for securing your wallet:</p>
-      <ul className="text-gray-700 dark:text-gray-300 mb-4 list-disc list-inside">
-        <li>Save the wallet to localStorage (encrypted with your password). This allows easy access but is tied to this browser.</li>
-        <li>Download the wallet as an encrypted file (warthog_wallet.txt). You can store this file securely and upload it later to login.</li>
-      </ul>
-       {walletData.wordCount && (
-        <p className="mb-2">
-          <strong className="text-gray-700 dark:text-gray-300">Word Count:</strong> {walletData.wordCount}
-        </p>
-      )}
-      {walletData.mnemonic && (
-        <div className="mb-4 px-4">
-          <strong className="text-gray-700 dark:text-gray-300">Seed Phrase:</strong>
-          <p className="bg-yellow-50 dark:bg-yellow-900 p-4 rounded-md mt-2 border border-yellow-200 dark:border-yellow-700">
-            <span className="text-yellow-800 dark:text-yellow-200 font-mono text-lg font-bold">{walletData.mnemonic}</span>
-          </p>
+
+      {showModal && walletData && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h2>Wallet Information</h2>
+            <p className="warning">
+              Warning: Please write down your seed phrase (if available) and private key on a piece of paper and store them securely. Do not share them with anyone.
+            </p>
+            <p style={{color: '#FFECB3'}}>Options for securing your wallet:</p>
+            <ul style={{color: '#FFECB3'}}>
+              <li>Save the wallet to localStorage (encrypted with your password). This allows easy access but is tied to this browser.</li>
+              <li>Download the wallet as an encrypted file (warthog_wallet.txt). You can store this file securely and upload it later to login.</li>
+            </ul>
+            {walletData.wordCount && (
+              <p style={{padding: '1rem',fontFamily: 'Montserrat'}}>
+                <strong>Word Count:</strong> {walletData.wordCount}
+              </p>
+            )}
+            {walletData.mnemonic && (
+              <div>
+                <strong style={{color: '#e9e6dbff'}}>Seed Phrase:</strong>
+                <p style={{backgroundColor: '#ffecb33d', padding: '10px', borderRadius: '5px'}}>
+                  <span style={{color: '#caa21eff', fontSize:"large", fontFamily: 'Montserrat', fontWeight: 'bold', textShadow: '1px 1px 1px rgba(0, 0, 0, 0.5)'}}>{walletData.mnemonic}</span>
+                </p>
+              </div>
+            )}
+
+            {walletData.pathType && (
+              <p style={{padding: '.75rem'}}>
+                <strong>Path Type:</strong> {walletData.pathType}
+              </p>
+            )}
+            <p>
+              <strong>Private Key:</strong><br /><span className="wallet-info-value">{walletData.privateKey}</span>
+            </p>
+            <p>
+              <strong>Public Key:</strong><br /><span className="wallet-info-value">{walletData.publicKey}</span>
+            </p>
+            <p>
+              <strong>Address:</strong><br /> <span className="wallet-info-value">{walletData.address}</span>
+            </p>
+            <div className="form-group" style={{padding: '.75rem'}}>
+              <label>Password to Encrypt Wallet:</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password to encrypt wallet"
+                className="input"
+              />
+            </div>
+            {error && (
+              <div className="error" style={{marginBottom: '10px'}}>
+                <strong>Error:</strong> {error}
+              </div>
+            )}
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={saveWalletConsent}
+                  onChange={(e) => setSaveWalletConsent(e.target.checked)}
+                />
+                Save wallet to localStorage (encrypted)
+              </label>
+            </div>
+            <div style={{marginBottom: '20px'}}>
+              <button
+                onClick={() => {
+                  if (!password) {
+                    setError('Please provide a password to encrypt and save the wallet.');
+                    return;
+                  }
+                  if (!saveWalletConsent) {
+                    setError('Please consent to save the wallet.');
+                    return;
+                  }
+                  setError(null);
+                  saveWallet(walletData);
+                  setShowModal(false);
+                  setWalletData(null);
+                }}
+                className="btn primary small"
+              >
+                Save Wallet
+              </button>
+              <button
+                onClick={() => {
+                  if (!password) {
+                    setError('Please provide a password to encrypt and download the wallet file.');
+                    return;
+                  }
+                  setError(null);
+                  downloadWallet(walletData);
+                  setShowModal(false);
+                  setWalletData(null);
+                }}
+                className="btn primary small"
+              >
+                Download Wallet File
+              </button>
+            </div>
+            <div style={{display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px'}}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={consentToClose}
+                  onChange={(e) => setConsentToClose(e.target.checked)}
+                />
+                I consent to close without saving to local storage or downloading the wallet file
+              </label>
+              <button
+                disabled={!consentToClose}
+                onClick={() => {
+                  setShowModal(false);
+                  setWalletData(null);
+                  setPassword('');
+                  setSaveWalletConsent(false);
+                  setConsentToClose(false);
+                  setError(null);
+                }}
+                className="btn danger small"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      {walletData.pathType && (
-        <p className="mb-2">
-          <strong className="text-gray-700 dark:text-gray-300">Path Type:</strong> {walletData.pathType}
-        </p>
-      )}
-      <div className="mb-2">
-        <strong className="text-gray-700 dark:text-gray-300">Private Key:</strong><br />
-        <span className="text-gray-900 dark:text-white font-mono break-all">{walletData.privateKey}</span>
-      </div>
-      <div className="mb-2">
-        <strong className="text-gray-700 dark:text-gray-300">Public Key:</strong><br />
-        <span className="text-gray-900 dark:text-white font-mono break-all">{walletData.publicKey}</span>
-      </div>
-      <div className="mb-4 px-4">
-        <strong className="text-gray-700 dark:text-gray-300">Address:</strong><br />
-        <span className="text-gray-900 dark:text-white font-mono break-all">{walletData.address}</span>
-      </div>
-      <div className="mb-4 px-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password to Encrypt Wallet:</label>
-        <div className="relative">
-          <input
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password to encrypt wallet"
-            className="mt-1 block w-full px-3 py-2 pr-10 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            {showPassword ? "🙈" : "👁️"}
-          </button>
-        </div>
-      </div>
-      <div className="mb-5 px-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Confirm Password:</label>
-        <div className="relative">
-          <input
-            type={showConfirmPassword ? "text" : "password"}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm password"
-            className="mt-1 block w-full px-3 py-2 pr-10 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          />
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            {showConfirmPassword ? "🙈" : "👁️"}
-          </button>
-        </div>
-      </div>
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 p-4 rounded-md mb-4">
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-      <div className="mb-4 px-4">
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={saveWalletConsent}
-            onChange={(e) => setSaveWalletConsent(e.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-          />
-          <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">Save wallet to localStorage (encrypted)</span>
-        </label>
-      </div>
-      <div className="flex space-x-2 mt-4 px-4">
-        <button
-          onClick={() => {
-            if (!password) {
-              setError('Please provide a password to encrypt and save the wallet.');
-              return;
-            }
-            if (password !== confirmPassword) {
-              setError('Passwords do not match.');
-              return;
-            }
-            if (!saveWalletConsent) {
-              setError('Please consent to save the wallet.');
-              return;
-            }
-            setError(null);
-            saveWallet(walletData);
-            setShowModal(false);
-            setWalletData(null);
-            setPassword('');
-            setConfirmPassword('');
-            setShowPassword(false);
-            setShowConfirmPassword(false);
-          }}
-          className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-        >
-          Save Wallet
-        </button>
-        <button
-          onClick={() => {
-            if (!password) {
-              setError('Please provide a password to encrypt and download the wallet file.');
-              return;
-            }
-            if (password !== confirmPassword) {
-              setError('Passwords do not match.');
-              return;
-            }
-            setError(null);
-            downloadWallet(walletData);
-            setShowModal(false);
-            setWalletData(null);
-            setPassword('');
-            setConfirmPassword('');
-            setShowPassword(false);
-            setShowConfirmPassword(false);
-          }}
-          className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
-        >
-          Download Wallet File
-        </button>
-      </div>
-      <div className="flex items-center justify-end space-x-2">
-        <label className="flex items-center text-sm">
-          <input
-            type="checkbox"
-            checked={consentToClose}
-            onChange={(e) => setConsentToClose(e.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-          />
-          <span className="ml-2 text-gray-700 dark:text-gray-300">I consent to close without saving to local storage or downloading the wallet file</span>
-        </label>
-        <button
-          disabled={!consentToClose}
-          onClick={() => {
-            setShowModal(false);
-            setWalletData(null);
-            setPassword('');
-            setConfirmPassword('');
-            setSaveWalletConsent(false);
-            setConsentToClose(false);
-            setError(null);
-            setShowPassword(false);
-            setShowConfirmPassword(false);
-          }}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  </div>
-)}
     </div>
   );
 };
+
 export default WarthogWallet;
