@@ -5,7 +5,7 @@ import axios from 'axios';
 const API_URL = '/api/proxy';
 const PAGE_SIZE = 15;
 
-const TransactionHistory = ({ address, node }) => {
+const TransactionHistory = ({ address, node, isPolling }) => {
   const [allHistory, setAllHistory] = useState([]); // Accumulate all fetched transactions
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -83,7 +83,7 @@ const TransactionHistory = ({ address, node }) => {
 
   return (
     <section style={{ fontFamily: 'Montserrat', color: '#FFECB3' }}>
-      <h2 style={{ color: '#caa21eff' }}>Transaction History (Page {currentPage})</h2>
+      <h2 style={{ color: '#caa21eff' }}>Transaction History (Page {currentPage}) <span style={{ display: 'inline-block', width: '8px', height: '8px', backgroundColor: isPolling ? 'yellow' : 'green', borderRadius: '50%', marginLeft: '8px', animation: isPolling ? 'blink 1s infinite' : 'none' }}></span></h2>
       {loading && <p>Loading...</p>}
       {error && <div className="error"><strong>Error:</strong> {error}</div>}
       {allHistory.length === 0 && !loading && <p>No transactions found.</p>}

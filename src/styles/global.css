@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Inter:wght@400;700&display=swap');
+@import "tailwindcss";
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+button { margin: 0.5rem; }
 
 body {
   font-family: 'Inter', sans-serif;
@@ -193,4 +196,11 @@ h1 {
 
 .register-address-btn:active {
   transform: translateY(0) scale(1);
+}
+
+/* Animation for polling indicator */
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
 }

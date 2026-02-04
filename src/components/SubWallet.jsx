@@ -631,7 +631,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
           <button
             onClick={() => inspectVault(sub.vaultAddress)}
             disabled={loading}
-            className="btn btn-info"
+            className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
           >
             Inspect Vault
           </button>
@@ -641,7 +641,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
             <button
               onClick={() => requestUnlock(sub)}
               disabled={loading || isUnlocking[sub.index]}
-              className="btn btn-danger small"
+              className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
             >
               {isUnlocking[sub.index] ? 'Unlocking...' : 'Request Unlock'}
             </button>
@@ -653,7 +653,7 @@ const pollForLockNotice = async (subAddress, timeoutMs = 45000) => {
                 toast.success('Force unlocked for testing!');
               }}
               disabled={loading}
-              className="btn btn-warning small"
+              className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
             >
               Force Unlock
             </button>
@@ -680,7 +680,7 @@ return (
       <button
         onClick={generateLockedSubWallet}
         disabled={loading}
-        className="btn btn-primary"
+        className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
       >
         + Generate New Sub-Wallet
       </button>
@@ -696,7 +696,7 @@ return (
         <button
           onClick={regenerateSubWallet}
           disabled={loading || !regenIndex}
-          className="btn btn-secondary"
+          className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
         >
           Regenerate
         </button>
@@ -738,7 +738,7 @@ return (
   <button
     onClick={() => refreshSubBalance(sub.address)}
     disabled={loading || isUnlocking[sub.index]}
-    className="btn btn-outline"
+    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
   >
     Refresh
   </button>
@@ -764,7 +764,7 @@ return (
                   <button
                     onClick={() => depositToSub(sub)}
                     disabled={isDepositing[sub.index] || loading || sub.locking}
-                    className="btn btn-success"
+                    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
                   >
                     {isDepositing[sub.index] ? 'Processing...' : sub.locking ? 'Locking...' : 'Deposit & Auto-Lock'}
                   </button>
@@ -796,7 +796,7 @@ return (
                       !sub.balance ||
                       Number(sub.balance) <= 0
                     }
-                    className="btn btn-info small"
+                    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
                   >
                     Max
                   </button>
@@ -809,7 +809,7 @@ return (
                       !sub.balance ||
                       Number(sub.balance) <= 0
                     }
-                    className="btn btn-primary"
+                    className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
                   >
                     {isWithdrawing[sub.index] ? 'Sending...' : 'Withdraw to Main'}
                   </button>
@@ -844,7 +844,7 @@ return (
                         Number(sub.balance) <= 0 ||
                         sub.locking
                       }
-                      className="btn btn-info small"
+                      className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
                     >
                       Max
                     </button>
@@ -857,7 +857,7 @@ return (
                         Number(sub.balance) <= 0 ||
                         sub.locking
                       }
-                      className="btn btn-warning"
+                      className="px-4 py-2 text-sm font-medium text-white bg-zinc-700 rounded-lg hover:bg-zinc-800 focus:ring-4 focus:outline-none focus:ring-zinc-300 transition-colors duration-200 dark:bg-zinc-600 dark:hover:bg-zinc-700 dark:focus:ring-zinc-800"
                     >
                       {isSweeping[sub.index] ? 'Sweeping...' : 'Sweep to Vault'}
                     </button>
